@@ -404,6 +404,9 @@ body.has-focus-widget .toast { bottom: calc(var(--tabbar-h) * 2 + 40px); }
   body.has-focus-widget { padding-bottom: calc(var(--tabbar-h) * 2 + 56px + env(safe-area-inset-bottom)); }
 }
 
+/* video that feeds the phone mini player; must stay in the DOM but out of sight */
+.mini-video { position: fixed; left: 0; bottom: 0; width: 2px; height: 2px; opacity: 0.01; pointer-events: none; }
+
 /* pop-out battle window (Document Picture-in-Picture) */
 .pip-body { margin: 0; min-height: 100vh; padding: 0; background: var(--bg); }
 .pip-battle {

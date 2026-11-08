@@ -37,6 +37,7 @@ psychic and fairy use slate, raspberry, teal and pinks.
 - Shadow: two soft warm layers (`--shadow`), a slightly deeper one on hover (`--shadow-lift`). No glow.
 - Motion: gentle; meadow idle drift, sprite hop, clouds, butterflies (day only), pond ripples, 150 ms hovers. prefers-reduced-motion stops all of it.
 - Focus is a two-sided battle: wild Pokémon top right with a draining HP bar, partner bottom left (mirrored, seen from behind) with Lv, HP and the XP it is banking. A floating widget (partner vs wild, HP, countdown) follows every other page; Document Picture-in-Picture gives an always-on-top pop-out.
+- Phones: the same battle is drawn on a 480x270 canvas and streamed into a Picture-in-Picture video, so it floats over other apps (Android Chrome, iPhone Safari). Wake Lock keeps the screen on; a silent lock-screen notice shows target + end time. A true home-screen widget needs a native app (WidgetKit / Glance), so it is out of scope for the web app.
 - Today leads with one next-step strip (one sentence, one button) so the page always answers "what now?".
 
 ## Navigation

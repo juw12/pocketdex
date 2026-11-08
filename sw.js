@@ -1,5 +1,5 @@
 /* PocketDex offline cache: core files up front, sprites cached on first view. */
-const CACHE = "pocketdex-v7";
+const CACHE = "pocketdex-v8";
 const CORE = [
   "./",
   "index.html",
@@ -54,3 +54,19 @@ function offlineFallback(request) {
   }
   return new Response("", { status: 503, statusText: "Offline" });
 }
+
+// Tapping the focus notice brings the app back to the battle.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = new URL((event.notification.data && event.notification.data.url) || "#/focus", self.registration.scope).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      const open = clients.find((client) => client.url.startsWith(self.registration.scope));
+      if (open) {
+        open.navigate(target).catch(() => {});
+        return open.focus();
+      }
+      return self.clients.openWindow(target);
+    })
+  );
+});

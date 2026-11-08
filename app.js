@@ -1097,7 +1097,7 @@ function habitStreak(habitId) {
     if (success) {
       catchPokemon(session.id, "focus");
       addXp(session.minutes * XP.focusMinute, `${session.minutes} min focus`);
-      if (window.Notification && Notification.permission === "granted" && document.hidden) {
+      if (!navigator.serviceWorker && window.Notification && Notification.permission === "granted" && document.hidden) {
         try {
           new Notification("PocketDex", { body: `Focus complete. ${p.n} was caught!`, icon: sprite(p.id) });
         } catch (error) { /* ignore */ }
@@ -1172,6 +1172,8 @@ function habitStreak(habitId) {
       document.title = "Paused - PocketDex";
     }
     save();
+    syncMediaSession();
+    focusNotice();
     if (currentRoute && currentRoute.name === "focus") render();
     else updateFocusWidgets();
   }
@@ -1184,6 +1186,7 @@ function habitStreak(habitId) {
   }
 
   function playHit() {
+    mini.hitAt = performance.now();
     restartAnimation($("#foe-sprite"), "hit");
     restartAnimation($("#ally-sprite"), "lunge");
     if (pipWindow) {
@@ -1283,7 +1286,11 @@ function habitStreak(habitId) {
   }
 
   async function openFocusPip() {
-    if (!("documentPictureInPicture" in window) || !state.focus) return;
+    if (!state.focus) return;
+    if (!("documentPictureInPicture" in window)) {
+      openVideoPip();
+      return;
+    }
     if (pipWindow) {
       pipWindow.focus();
       return;
@@ -1329,7 +1336,352 @@ function habitStreak(habitId) {
     });
   }
 
+  // ---- Phone-friendly mini player: the battle drawn on a canvas and streamed into a
+  // Picture-in-Picture video, so it floats over other apps on Android Chrome and iPhone Safari.
+  const mini = { canvas: null, ctx: null, video: null, loop: 0, hitAt: -1e9, caughtId: null, images: new Map() };
+  const MINI_W = 480;
+  const MINI_H = 270;
+
+  function canVideoPip() {
+    const video = document.createElement("video");
+    const pipApi = document.pictureInPictureEnabled || typeof video.webkitSetPresentationMode === "function";
+    return Boolean(pipApi && HTMLCanvasElement.prototype.captureStream);
+  }
+
+  function canPopOut() {
+    return "documentPictureInPicture" in window || canVideoPip();
+  }
+
+  function spriteImage(id) {
+    if (mini.images.has(id)) return mini.images.get(id);
+    const image = new Image();
+    const data = window.SPRITE_DATA && window.SPRITE_DATA[id];
+    image.src = data ? "data:image/png;base64," + data : sprite(id);
+    mini.images.set(id, image);
+    return image;
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawBar(ctx, x, y, w, h, pct, color, track) {
+    roundRect(ctx, x, y, w, h, h / 2);
+    ctx.fillStyle = track || "#f0ebe2";
+    ctx.fill();
+    if (pct <= 0) return;
+    roundRect(ctx, x, y, Math.max(h, (w * Math.min(100, pct)) / 100), h, h / 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+
+  function drawCard(ctx, x, y, w, h) {
+    ctx.save();
+    ctx.shadowColor = "rgba(60, 45, 25, 0.14)";
+    ctx.shadowBlur = 14;
+    ctx.shadowOffsetY = 4;
+    roundRect(ctx, x, y, w, h, 14);
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawShadow(ctx, cx, cy, rx) {
+    const gradient = ctx.createRadialGradient(cx, cy, 2, cx, cy, rx);
+    gradient.addColorStop(0, "rgba(112, 128, 76, 0.34)");
+    gradient.addColorStop(1, "rgba(112, 128, 76, 0)");
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(1, 0.28);
+    ctx.translate(-cx, -cy);
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(cx, cy, rx, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawMiniFrame(now) {
+    const ctx = mini.ctx;
+    const w = MINI_W;
+    const h = MINI_H;
+    const sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, "#edf0e8");
+    sky.addColorStop(0.5, "#f3efe5");
+    sky.addColorStop(0.5, "#e8e1cb");
+    sky.addColorStop(1, "#eee8d7");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+    ctx.imageSmoothingEnabled = false;
+
+    if (mini.caughtId) {
+      const p = BY_ID.get(mini.caughtId);
+      drawShadow(ctx, w / 2, 176, 70);
+      const image = spriteImage(p.id);
+      if (image.complete && image.naturalWidth) ctx.drawImage(image, w / 2 - 64, 50, 128, 128);
+      ctx.fillStyle = "#26221d";
+      ctx.font = "600 24px 'Iowan Old Style', 'Palatino Linotype', Georgia, serif";
+      ctx.textAlign = "center";
+      ctx.fillText(`Gotcha! ${p.n} was caught.`, w / 2, 222);
+      ctx.textAlign = "left";
+      return;
+    }
+
+    const session = state.focus;
+    if (!session) return;
+    const info = focusInfo(session);
+    const paused = Boolean(session.pausedAt);
+    const sinceHit = now - mini.hitAt;
+    const bob = paused ? 0 : Math.sin(now / 380) * 4;
+
+    // wild Pokemon, top right
+    drawShadow(ctx, 372, 124, 62);
+    const foeImage = spriteImage(info.foe.id);
+    const blinkHidden = sinceHit < 700 && Math.floor(sinceHit / 110) % 2 === 0;
+    if (foeImage.complete && foeImage.naturalWidth && !blinkHidden) {
+      ctx.globalAlpha = paused ? 0.75 : 1;
+      ctx.drawImage(foeImage, 316, 10 + bob, 112, 112);
+      ctx.globalAlpha = 1;
+    }
+
+    // partner, bottom left, mirrored to face the foe; lunges on each finished minute
+    drawShadow(ctx, 104, 254, 70);
+    if (info.partner) {
+      const allyImage = spriteImage(info.partner.id);
+      const lunge = sinceHit < 500 ? Math.sin((sinceHit / 500) * Math.PI) : 0;
+      if (allyImage.complete && allyImage.naturalWidth) {
+        ctx.save();
+        ctx.globalAlpha = paused ? 0.75 : 1;
+        ctx.translate(40 + 128 + lunge * 22, 128 - lunge * 8);
+        ctx.scale(-1, 1);
+        ctx.drawImage(allyImage, 0, 0, 128, 128);
+        ctx.restore();
+      }
+    }
+
+    // foe card
+    drawCard(ctx, 14, 16, 230, 56);
+    ctx.fillStyle = "#26221d";
+    ctx.font = "600 17px 'Iowan Old Style', 'Palatino Linotype', Georgia, serif";
+    ctx.fillText(info.foe.n, 28, 39);
+    ctx.fillStyle = "#6b6157";
+    ctx.font = "600 11px 'Segoe UI', system-ui, sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(`Lv ${wildLevel(info.foe)}`, 230, 39);
+    ctx.textAlign = "left";
+    ctx.fillText("HP", 28, 59);
+    drawBar(ctx, 50, 52, 180, 8, info.hpPct, "#c0432f");
+
+    // partner card with the live timer
+    drawCard(ctx, 228, 146, 238, 110);
+    ctx.fillStyle = "#26221d";
+    ctx.font = "600 16px 'Iowan Old Style', 'Palatino Linotype', Georgia, serif";
+    ctx.fillText(info.partner ? info.partnerName : "Focus", 242, 168);
+    if (info.partner) {
+      const xpView = partnerXpView(info.earnedXp);
+      ctx.fillStyle = "#6b6157";
+      ctx.font = "600 11px 'Segoe UI', system-ui, sans-serif";
+      ctx.textAlign = "right";
+      ctx.fillText(`Lv ${xpView.level}`, 452, 168);
+      ctx.textAlign = "left";
+      ctx.fillText("HP", 242, 186);
+      drawBar(ctx, 264, 179, 188, 7, 100, "#3f7f52");
+      ctx.fillText("XP", 242, 200);
+      drawBar(ctx, 264, 195, 188, 4, xpView.gainPct, "rgba(61, 127, 217, 0.35)");
+      drawBar(ctx, 264, 195, 188, 4, xpView.nowPct, "#3d7fd9", "rgba(0,0,0,0)");
+    }
+    ctx.fillStyle = paused ? "#6b6157" : "#26221d";
+    ctx.font = "600 36px 'Iowan Old Style', 'Palatino Linotype', Georgia, serif";
+    ctx.textAlign = "right";
+    ctx.fillText(fmt(info.remain), 452, 244);
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#6b6157";
+    ctx.font = "600 11px 'Segoe UI', system-ui, sans-serif";
+    ctx.fillText(paused ? "PAUSED" : `+${info.earnedXp} XP`, 242, 240);
+  }
+
+  function ensureMiniCanvas() {
+    if (mini.canvas) return;
+    mini.canvas = document.createElement("canvas");
+    mini.canvas.width = MINI_W;
+    mini.canvas.height = MINI_H;
+    mini.ctx = mini.canvas.getContext("2d");
+  }
+
+  function startMiniLoop() {
+    if (mini.loop) return;
+    // setInterval (not requestAnimationFrame) so frames keep coming while the page is in the background.
+    mini.loop = setInterval(() => drawMiniFrame(performance.now()), 100);
+    drawMiniFrame(performance.now());
+  }
+
+  function stopMiniPlayer() {
+    clearInterval(mini.loop);
+    mini.loop = 0;
+    mini.caughtId = null;
+    if (mini.video) {
+      if (document.pictureInPictureElement === mini.video && document.exitPictureInPicture) {
+        document.exitPictureInPicture().catch(() => {});
+      }
+      mini.video.srcObject = null;
+      mini.video.remove();
+      mini.video = null;
+    }
+  }
+
+  function syncMediaSession() {
+    if (!("mediaSession" in navigator) || !state.focus) return;
+    const info = focusInfo(state.focus);
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: `Catching ${info.foe.n}`,
+        artist: info.partner ? `${info.partnerName} is fighting beside you` : "PocketDex focus",
+        artwork: [{ src: new URL(sprite(info.foe.id), location.href).href, sizes: "96x96", type: "image/png" }],
+      });
+      navigator.mediaSession.playbackState = state.focus.pausedAt ? "paused" : "playing";
+    } catch (error) { /* metadata is optional */ }
+  }
+
+  async function openVideoPip() {
+    if (location.protocol === "file:" && !window.SPRITE_DATA) await loadScript("vendor/sprites-data.js");
+    ensureMiniCanvas();
+    startMiniLoop();
+    if (!mini.video) {
+      const video = document.createElement("video");
+      video.className = "mini-video";
+      video.muted = true;
+      video.playsInline = true;
+      video.setAttribute("playsinline", "");
+      video.setAttribute("aria-hidden", "true");
+      video.srcObject = mini.canvas.captureStream(10);
+      document.body.appendChild(video);
+      video.addEventListener("leavepictureinpicture", () => {
+        if (!state.focus) stopMiniPlayer();
+      });
+      // The Picture-in-Picture play/pause button pauses and resumes the focus session.
+      video.addEventListener("pause", () => {
+        if (state.focus && !state.focus.pausedAt && document.pictureInPictureElement === video) {
+          togglePause();
+          video.play().catch(() => {});
+        }
+      });
+      mini.video = video;
+      if ("mediaSession" in navigator) {
+        try {
+          navigator.mediaSession.setActionHandler("pause", () => {
+            if (state.focus && !state.focus.pausedAt) togglePause();
+          });
+          navigator.mediaSession.setActionHandler("play", () => {
+            if (state.focus && state.focus.pausedAt) togglePause();
+          });
+        } catch (error) { /* not every browser supports these actions */ }
+      }
+    }
+    syncMediaSession();
+    try {
+      await mini.video.play();
+      if (mini.video.requestPictureInPicture) {
+        await mini.video.requestPictureInPicture();
+      } else {
+        mini.video.webkitSetPresentationMode("picture-in-picture");
+      }
+    } catch (error) {
+      toast("This browser could not open the floating timer.");
+    }
+  }
+
+  // ---- Keep the screen on while the battle runs (phone on a stand as a desk clock).
+  let wakeLock = null;
+  let wantWakeLock = false;
+
+  async function acquireWakeLock() {
+    if (!("wakeLock" in navigator) || !state.focus || document.hidden) return;
+    try {
+      wakeLock = await navigator.wakeLock.request("screen");
+      wakeLock.addEventListener("release", () => {
+        wakeLock = null;
+        updateWakeButton();
+      });
+    } catch (error) {
+      wakeLock = null;
+    }
+    updateWakeButton();
+  }
+
+  function releaseWakeLock() {
+    wantWakeLock = false;
+    if (wakeLock) wakeLock.release().catch(() => {});
+    wakeLock = null;
+    updateWakeButton();
+  }
+
+  function updateWakeButton() {
+    const button = $("[data-f=wake]");
+    if (!button) return;
+    const on = Boolean(wakeLock) || wantWakeLock;
+    button.textContent = on ? "Screen stays on" : "Keep screen on";
+    button.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && wantWakeLock && !wakeLock) acquireWakeLock();
+  });
+
+  // ---- Lock-screen notice: who you are catching and when the session ends.
+  const FOCUS_TAG = "pocketdex-focus";
+
+  async function focusNotice() {
+    if (!state.focus || !state.settings.focusNotice) return;
+    if (!window.Notification || Notification.permission !== "granted" || !navigator.serviceWorker) return;
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const info = focusInfo(state.focus);
+      const end = new Date(Date.now() + info.remain);
+      const endText = end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const body = state.focus.pausedAt
+        ? `Paused with ${fmt(info.remain)} left.`
+        : `Focus until ${endText}.${info.partner ? ` ${info.partnerName} is fighting beside you.` : ""}`;
+      await registration.showNotification(`Catching ${info.foe.n}`, {
+        tag: FOCUS_TAG,
+        body,
+        icon: sprite(info.foe.id),
+        badge: sprite(info.foe.id),
+        silent: true,
+        renotify: false,
+        data: { url: "#/focus" },
+      });
+    } catch (error) { /* notifications are optional */ }
+  }
+
+  async function clearFocusNotice(caughtName) {
+    if (!navigator.serviceWorker || !window.Notification || Notification.permission !== "granted") return;
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const open = await registration.getNotifications({ tag: FOCUS_TAG });
+      open.forEach((notice) => notice.close());
+      if (caughtName && document.hidden) {
+        await registration.showNotification("PocketDex", { tag: FOCUS_TAG, body: `Focus complete. ${caughtName} was caught!` });
+      }
+    } catch (error) { /* notifications are optional */ }
+  }
+
   function closePipAfterFinish(caughtId) {
+    releaseWakeLock();
+    clearFocusNotice(caughtId ? BY_ID.get(caughtId).n : null);
+    if (mini.video) {
+      if (caughtId) {
+        mini.caughtId = caughtId;
+        setTimeout(stopMiniPlayer, 6000);
+      } else {
+        stopMiniPlayer();
+      }
+    }
     if (!pipWindow) return;
     const win = pipWindow;
     if (caughtId) {
@@ -1348,7 +1700,7 @@ function habitStreak(habitId) {
         const info = focusInfo(session);
         const foe = info.foe;
         const paused = Boolean(session.pausedAt);
-        const canPop = "documentPictureInPicture" in window;
+        const canPop = canPopOut();
         let allyHtml = `
             <div class="pad pad-empty"><span class="pad-ghost" aria-hidden="true"></span></div>
             <div class="status-card">
@@ -1388,6 +1740,7 @@ function habitStreak(habitId) {
             <button class="btn primary" data-f="pause">${paused ? "Resume" : "Pause"}</button>
             <button class="btn ghost" data-f="run">Run away</button>
             ${canPop ? `<button class="btn ghost" data-f="popout">Pop out timer</button>` : ""}
+            ${"wakeLock" in navigator ? `<button class="btn ghost" data-f="wake" aria-pressed="${wakeLock || wantWakeLock ? "true" : "false"}">${wakeLock || wantWakeLock ? "Screen stays on" : "Keep screen on"}</button>` : ""}
           </div>
         </section>`;
       }
@@ -1408,7 +1761,7 @@ function habitStreak(habitId) {
           <fieldset class="durations"><legend>Length</legend>
             ${[15, 25, 45, 60].map((m) => `<label><input type="radio" name="mins" value="${m}" ${m === 25 ? "checked" : ""}><span>${m} min</span></label>`).join("")}
           </fieldset>
-          <label class="check"><input type="checkbox" id="notify" ${window.Notification && Notification.permission === "granted" ? "checked" : ""}><span>Notify me when it ends (browser notification)</span></label>
+          <label class="check"><input type="checkbox" id="notify" ${window.Notification && Notification.permission === "granted" ? "checked" : ""}><span>Show it on my lock screen and notify me when it ends</span></label>
           <button class="btn primary wide" data-f="start" data-id="${target.id}">Start focus</button>
         </div>
         <div class="panel">
@@ -1429,9 +1782,13 @@ function habitStreak(habitId) {
           const minutes = Number(($("input[name=mins]:checked", view) || {}).value || 25);
           const id = Number($("[data-f=start]", view).dataset.id);
           const wantNotify = $("#notify", view).checked;
-          if (wantNotify && window.Notification && Notification.permission === "default") Notification.requestPermission();
+          state.settings.focusNotice = wantNotify;
+          const askPermission = wantNotify && window.Notification && Notification.permission === "default"
+            ? Notification.requestPermission()
+            : Promise.resolve();
           state.focus = { id, minutes, start: Date.now(), pausedAt: null, pausedTotal: 0 };
           lastHit = null;
+          askPermission.then(() => focusNotice());
           save();
           sfx.select();
           render();
@@ -1439,6 +1796,13 @@ function habitStreak(habitId) {
           togglePause();
         } else if (action === "popout") {
           openFocusPip();
+        } else if (action === "wake") {
+          if (wakeLock || wantWakeLock) {
+            releaseWakeLock();
+          } else {
+            wantWakeLock = true;
+            acquireWakeLock();
+          }
         } else if (action === "run") {
           if (confirm("Run away? The Pokémon will flee and this session will not count.")) finishFocus(false);
         } else if (action === "random" || action === "pick") {
@@ -2230,7 +2594,7 @@ function habitStreak(habitId) {
   });
 
   // Expose a tiny hook for automated checks.
-  window.PocketDex = { state: () => state, encounterFor, defenseProfile, levelFor, pixelate, TOTAL };
+  window.PocketDex = { state: () => state, encounterFor, defenseProfile, levelFor, pixelate, TOTAL, mini: () => mini };
 
   checkBadges();
   render();
