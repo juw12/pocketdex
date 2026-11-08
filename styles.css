@@ -216,6 +216,15 @@ select.field-input { cursor: pointer; }
 .resident-list small { color: var(--muted); font-size: 0.78rem; }
 
 /* ---------------------------------------------------------------- today */
+/* next step strip (Today) */
+.next-step { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 16px; align-items: center;
+  background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 18px; margin: 0 0 18px; }
+.next-sprite { width: 56px; height: 56px; border-radius: 16px; background: var(--surface-2); display: grid; place-items: center; }
+.next-sprite img { width: 48px; height: 48px; }
+.next-copy .eyebrow { margin: 0; }
+.next-title { font-family: var(--serif); font-size: 1.22rem; font-weight: 600; line-height: 1.25; margin-top: 2px; }
+.next-text { color: var(--muted); font-size: 0.9rem; line-height: 1.45; }
+
 .today-head { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-end; justify-content: space-between; margin: 8px 0 20px; }
 .today-head h1 { margin-top: 4px; }
 .kpis { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -493,6 +502,11 @@ kbd { font: 600 0.72rem var(--sans); border: 1px solid var(--line); border-botto
 }
 
 @media (max-width: 520px) {
+  .next-step { grid-template-columns: 48px minmax(0, 1fr); gap: 12px 14px; padding: 14px; }
+  .next-sprite { width: 48px; height: 48px; border-radius: 14px; }
+  .next-sprite img { width: 40px; height: 40px; }
+  .next-cta { grid-column: 1 / -1; }
+  .next-cta .btn { width: 100%; }
   h1 { font-size: 1.75rem; }
   .brand-name { font-size: 1.2rem; }
   .hdr-track { width: 56px; }

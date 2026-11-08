@@ -720,6 +720,50 @@ function habitStreak(habitId) {
     },
   };
 
+  // One clear next step for Today: active focus, then the encounter, then habits, then partner, then rest.
+  function nextStepFor(key, encounter, caughtToday) {
+    if (state.focus) {
+      const left = Math.max(0, Math.ceil(focusRemaining(state.focus) / 60000));
+      return {
+        id: state.focus.id,
+        title: "Your focus session is running",
+        text: `${left} min left to catch ${BY_ID.get(state.focus.id).n}.`,
+        cta: `<a class="btn primary" href="#/focus">Back to focus</a>`,
+      };
+    }
+    if (!caughtToday) {
+      return {
+        id: encounter.id,
+        title: `Catch ${encounter.n}`,
+        text: "Finish one focus session today and it joins your Pokédex.",
+        cta: `<a class="btn primary" href="#/focus?id=${encounter.id}">Start focus</a>`,
+      };
+    }
+    const openHabit = state.habits.find((h) => !(state.habitLog[key] || {})[h.id]);
+    if (openHabit) {
+      return {
+        id: state.partner ? state.partner.id : encounter.id,
+        title: openHabit.name,
+        text: `Next on today's training. Worth ${XP.habit} XP for your partner.`,
+        cta: `<button class="btn primary" type="button" data-next-habit="${openHabit.id}">Mark done</button>`,
+      };
+    }
+    if (!state.partner) {
+      return {
+        id: encounter.id,
+        title: "Choose a partner",
+        text: "It gains experience from every habit and focus session.",
+        cta: `<a class="btn primary" href="#/habits">Choose</a>`,
+      };
+    }
+    return {
+      id: state.partner.id,
+      title: "All done for today",
+      text: "Rest in the meadow. A new Pokémon appears tomorrow.",
+      cta: `<a class="btn" href="#/meadow">Enter the meadow</a>`,
+    };
+  }
+
   // ---- Today
   VIEWS.today = {
     html() {
@@ -732,6 +776,7 @@ function habitStreak(habitId) {
       const streak = streakFrom(activeDays());
       const minutes = focusMinutesOn(key);
       const partner = state.partner ? BY_ID.get(state.partner.id) : null;
+      const next = nextStepFor(key, encounter, caughtToday);
       const recent = Object.entries(state.caught)
         .sort((a, b) => (a[1].d < b[1].d ? 1 : -1))
         .slice(0, 8);
@@ -768,6 +813,11 @@ function habitStreak(habitId) {
           <div><dt>Habits</dt><dd>${habitsDone}<small> / ${state.habits.length}</small></dd></div>
         </dl>
       </section>
+      <section class="next-step" aria-label="Next step">
+        <div class="next-sprite"><img src="${sprite(next.id)}" alt=""></div>
+        <div class="next-copy"><p class="eyebrow">Next step</p><p class="next-title">${esc(next.title)}</p><p class="next-text">${esc(next.text)}</p></div>
+        <div class="next-cta">${next.cta}</div>
+      </section>
       <section class="stage hero" id="today-stage">
         <div class="stage-caption">
           <p class="eyebrow">${PHASE_LABEL[window.PocketMeadow ? window.PocketMeadow.phaseFor(new Date()) : "day"]} in your meadow</p>
@@ -788,7 +838,7 @@ function habitStreak(habitId) {
               : `<p>A wild <b>${esc(encounter.n.toUpperCase())}</b> appeared! Finish a focus session to catch it.</p>`}
           </div>
           <div class="row">
-            ${caughtToday ? `<a class="btn" href="#/dex/${encounter.id}">View entry</a>` : `<a class="btn primary" href="#/focus?id=${encounter.id}">Focus to catch</a><a class="btn ghost" href="#/dex/${encounter.id}">No.${num(encounter.id)} entry</a>`}
+            ${caughtToday ? `<a class="btn" href="#/dex/${encounter.id}">View entry</a>` : `<a class="btn" href="#/focus?id=${encounter.id}">Focus to catch</a><a class="btn ghost" href="#/dex/${encounter.id}">No.${num(encounter.id)} entry</a>`}
           </div>
         </section>
         <section class="panel">
@@ -810,6 +860,10 @@ function habitStreak(habitId) {
       view.addEventListener("change", (event) => {
         const box = event.target.closest("[data-habit]");
         if (box) toggleHabit(box.dataset.habit, box.checked);
+      });
+      view.addEventListener("click", (event) => {
+        const done = event.target.closest("[data-next-habit]");
+        if (done) toggleHabit(done.dataset.nextHabit, true);
       });
       mountMeadow($("#today-stage", view), true);
     },

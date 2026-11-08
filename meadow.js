@@ -212,6 +212,100 @@
     motes = new THREE.Points(moteGeo, moteMat);
     scene.add(motes);
 
+    // ambient life: clouds by day, butterflies in daylight, ripples on the pond
+    const ambientRand = seeded(7331);
+    const cloudRig = new THREE.Group();
+    if (phase !== "night") {
+      const cloudGeo = keep(new THREE.IcosahedronGeometry(1, 0));
+      const cloudMat = keep(new THREE.MeshBasicMaterial({
+        color: phase === "day" ? 0xffffff : 0xfdeee2,
+        transparent: true,
+        opacity: 0.9,
+        fog: false,
+      }));
+      const cloudCount = opts.compact ? 4 : 6;
+      for (let i = 0; i < cloudCount; i++) {
+        const cloud = new THREE.Group();
+        const puffs = 3 + Math.floor(ambientRand() * 2);
+        for (let p = 0; p < puffs; p++) {
+          const puff = new THREE.Mesh(cloudGeo, cloudMat);
+          puff.position.set((p - puffs / 2) * 1.1, ambientRand() * 0.35, (ambientRand() - 0.5) * 0.6);
+          puff.scale.set(1.2 + ambientRand() * 0.5, 0.42 + ambientRand() * 0.12, 0.8);
+          cloud.add(puff);
+        }
+        const angle = (i / cloudCount) * Math.PI * 2 + ambientRand() * 0.6;
+        const radius = 21 + ambientRand() * 5;
+        cloud.position.set(Math.cos(angle) * radius, 4.3 + ambientRand() * 1.1, Math.sin(angle) * radius);
+        cloud.rotation.y = ambientRand() * Math.PI;
+        cloudRig.add(cloud);
+      }
+    }
+    scene.add(cloudRig);
+
+    const butterflies = [];
+    const butterflyCount = phase === "night" ? 0 : phase === "day" ? (opts.compact ? 3 : 5) : 2;
+    if (butterflyCount) {
+      const wingGeo = keep(new THREE.PlaneGeometry(0.2, 0.15));
+      wingGeo.translate(0.1, 0, 0);
+      const wingMats = [0xf2c14e, 0xf4f1e8, 0xe8836f].map((color) =>
+        keep(new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }))
+      );
+      for (let i = 0; i < butterflyCount; i++) {
+        const body = new THREE.Group();
+        const left = new THREE.Mesh(wingGeo, wingMats[i % wingMats.length]);
+        const right = new THREE.Mesh(wingGeo, wingMats[i % wingMats.length]);
+        right.rotation.z = Math.PI;
+        body.add(left, right);
+        const angle = ambientRand() * Math.PI * 2;
+        const ring = 2.5 + ambientRand() * 6;
+        butterflies.push({
+          body,
+          left,
+          right,
+          center: new THREE.Vector3(Math.cos(angle) * ring, 0, Math.sin(angle) * ring),
+          reach: 1.4 + ambientRand() * 1.6,
+          speed: 0.25 + ambientRand() * 0.25,
+          seed: ambientRand() * 10,
+        });
+        scene.add(body);
+      }
+    }
+
+    const ripples = [];
+    const rippleGeo = keep(new THREE.RingGeometry(0.42, 0.48, 40));
+    for (let i = 0; i < 3; i++) {
+      const rippleMat = keep(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }));
+      const ripple = new THREE.Mesh(rippleGeo, rippleMat);
+      ripple.rotation.x = -Math.PI / 2;
+      ripple.position.set(-4.2 + (ambientRand() - 0.5) * 2, 0.035, -3.2 + (ambientRand() - 0.5) * 2);
+      ripples.push({ mesh: ripple, offset: i / 3, base: ripple.position.clone() });
+      scene.add(ripple);
+    }
+    function placeAmbient(t) {
+      cloudRig.rotation.y = t * 0.008;
+      butterflies.forEach((b) => {
+        const u = t * b.speed + b.seed;
+        const x = b.center.x + Math.sin(u) * b.reach;
+        const z = b.center.z + Math.sin(u * 2) * b.reach * 0.6;
+        const dx = Math.cos(u) * b.reach;
+        const dz = Math.cos(u * 2) * b.reach * 1.2;
+        b.body.position.set(x, 0.85 + Math.sin(u * 3) * 0.25, z);
+        b.body.rotation.y = Math.atan2(-dz, dx);
+        const flap = Math.sin(t * 16 + b.seed) * 1.1;
+        b.left.rotation.y = flap;
+        b.right.rotation.y = -flap;
+      });
+      ripples.forEach((r) => {
+        const cycle = (t / 4.5 + r.offset) % 1;
+        if (cycle < 0.02) {
+          r.mesh.position.set(r.base.x + (Math.sin(t * 7.1 + r.offset * 9) * 0.8), 0.035, r.base.z + Math.cos(t * 5.3 + r.offset * 7) * 0.8);
+        }
+        r.mesh.scale.setScalar(0.3 + cycle * 2.4);
+        r.mesh.material.opacity = (1 - cycle) * (phase === "night" ? 0.25 : 0.55);
+      });
+    }
+    placeAmbient(3);
+
     // creatures as pixel billboards with blob shadows
     const shadowTex = keep(blobTexture(THREE));
     const shadowGeo = keep(new THREE.PlaneGeometry(1.3, 1.3));
@@ -413,8 +507,14 @@
           let moving = false;
           if (c.wait > 0) {
             c.wait -= dt;
+            if (c.sprite.material.map && c.rand() < dt * 0.18) {
+              c.facing = -(c.facing || 1);
+              c.sprite.material.map.repeat.x = c.facing;
+              c.sprite.material.map.offset.x = c.facing === -1 ? 1 : 0;
+            }
           } else if (distance < 0.08) {
             c.wait = 2 + c.rand() * 5;
+            c.joy = c.rand() < 0.35 ? 0.6 : 0;
             if (c.info.encounter) {
               c.target.set(3.6 + (c.rand() - 0.5) * 1.6, 0, -1.4 + (c.rand() - 0.5) * 1.6);
             } else if (c.info.partner) {
@@ -438,7 +538,11 @@
               c.sprite.material.map.offset.x = facing === -1 ? 1 : 0;
             }
           }
-          const hop = moving ? Math.abs(Math.sin(elapsed * 9 + c.phase)) * 0.14 : Math.sin(elapsed * 2 + c.phase) * 0.025;
+          let hop = moving ? Math.abs(Math.sin(elapsed * 9 + c.phase)) * 0.14 : Math.sin(elapsed * 2 + c.phase) * 0.025;
+          if (!moving && c.joy > 0) {
+            c.joy = Math.max(0, c.joy - dt);
+            hop = Math.abs(Math.sin(((0.6 - c.joy) / 0.3) * Math.PI)) * 0.24;
+          }
           c.sprite.position.set(c.position.x, c.size * 0.42 + hop, c.position.z);
           c.shadow.position.set(c.position.x, 0.02, c.position.z);
           c.shadow.scale.setScalar(c.size * 0.55 * (1 - hop * 0.8));
@@ -454,6 +558,7 @@
           trees.forEach((crown, i) => {
             crown.rotation.z = Math.sin(elapsed * 0.6 + i) * 0.03;
           });
+          placeAmbient(elapsed + 3);
         }
         renderer.render(scene, camera);
         if (!container.dataset.ready) container.dataset.ready = "1";

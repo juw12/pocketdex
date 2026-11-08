@@ -35,7 +35,8 @@ psychic and fairy use slate, raspberry, teal and pinks.
 ## Shape, depth, motion
 - Radius 20 px (cards), 14 px (small), pills for buttons, chips and the tab bar.
 - Shadow: two soft warm layers (`--shadow`), a slightly deeper one on hover (`--shadow-lift`). No glow.
-- Motion: gentle; meadow idle drift, sprite hop, 150 ms hovers. prefers-reduced-motion stops drift and hops.
+- Motion: gentle; meadow idle drift, sprite hop, clouds, butterflies (day only), pond ripples, 150 ms hovers. prefers-reduced-motion stops all of it.
+- Today leads with one next-step strip (one sentence, one button) so the page always answers "what now?".
 
 ## Navigation
 Top bar: serif wordmark with a red dot, Dex progress bar, sound toggle. Floating bottom pill tab bar with SVG
