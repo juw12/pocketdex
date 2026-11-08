@@ -1,0 +1,16 @@
+{
+  "name": "PocketDex",
+  "short_name": "PocketDex",
+  "description": "A quiet Pokedex companion: 1025 Pokemon, a 3D meadow, focus sessions, habits and a photo Field Dex.",
+  "start_url": "./index.html#/today",
+  "display": "standalone",
+  "background_color": "#f6f2eb",
+  "theme_color": "#f6f2eb",
+  "icons": [
+    {
+      "src": "sprites/25.png",
+      "sizes": "96x96",
+      "type": "image/png"
+    }
+  ]
+}
