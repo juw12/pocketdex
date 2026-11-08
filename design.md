@@ -36,6 +36,7 @@ psychic and fairy use slate, raspberry, teal and pinks.
 - Radius 20 px (cards), 14 px (small), pills for buttons, chips and the tab bar.
 - Shadow: two soft warm layers (`--shadow`), a slightly deeper one on hover (`--shadow-lift`). No glow.
 - Motion: gentle; meadow idle drift, sprite hop, clouds, butterflies (day only), pond ripples, 150 ms hovers. prefers-reduced-motion stops all of it.
+- Focus is a two-sided battle: wild Pokémon top right with a draining HP bar, partner bottom left (mirrored, seen from behind) with Lv, HP and the XP it is banking. A floating widget (partner vs wild, HP, countdown) follows every other page; Document Picture-in-Picture gives an always-on-top pop-out.
 - Today leads with one next-step strip (one sentence, one button) so the page always answers "what now?".
 
 ## Navigation

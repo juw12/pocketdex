@@ -490,12 +490,17 @@ function habitStreak(habitId) {
       if (active) link.setAttribute("aria-current", "page");
       else link.removeAttribute("aria-current");
     });
-    const view = $("#view");
+    // Swap in a fresh #view so listeners added by the previous page's mount() do not pile up
+    // (stacked listeners made toggles such as Pause fire twice and cancel out).
+    const previousView = $("#view");
+    const view = previousView.cloneNode(false);
+    previousView.replaceWith(view);
     view.dataset.route = route.name;
     const renderer = VIEWS[route.name];
     view.innerHTML = renderer.html(route);
     if (renderer.mount) renderer.mount(view, route);
     updateHeader();
+    updateFocusWidgets();
     if (!route.keepScroll) window.scrollTo(0, 0);
   }
 
@@ -1101,27 +1106,288 @@ function habitStreak(habitId) {
       toast(`${p.n} fled. Ready when you are.`);
     }
     checkBadges();
+    closePipAfterFinish(success ? session.id : null);
+    updateFocusWidgets();
     if (currentRoute && currentRoute.name === "focus") render();
+  }
+
+  // Battle helpers: the wild Pokemon loses HP as the session runs; the partner earns XP alongside.
+  let lastHit = null;
+  let widgetKey = "";
+  let pipWindow = null;
+
+  function focusInfo(session) {
+    const foe = BY_ID.get(session.id);
+    const total = session.minutes * 60000;
+    const remain = focusRemaining(session);
+    const doneMinutes = Math.floor((total - remain) / 60000);
+    const partner = state.partner ? BY_ID.get(state.partner.id) : null;
+    return {
+      foe,
+      total,
+      remain,
+      hpPct: Math.max(0, Math.min(100, (remain / total) * 100)),
+      doneMinutes,
+      earnedXp: doneMinutes * XP.focusMinute,
+      fullXp: session.minutes * XP.focusMinute,
+      partner,
+      partnerName: partner ? state.partner.nick || partner.n : "",
+    };
+  }
+
+  function wildLevel(p) {
+    const total = p.s.reduce((sum, value) => sum + value, 0);
+    return Math.max(3, Math.min(70, Math.round(total / 12)));
+  }
+
+  function partnerXpView(extra) {
+    const xp = state.partner.xp;
+    const level = levelFor(xp);
+    const lo = xpForLevel(level);
+    const hi = xpForLevel(level + 1);
+    const pct = (value) => Math.max(0, Math.min(100, ((value - lo) / (hi - lo)) * 100));
+    return { level, nowPct: pct(xp), gainPct: pct(xp + extra) };
+  }
+
+  function xpNote(info) {
+    return `+${info.earnedXp} of ${info.fullXp} XP so far`;
+  }
+
+  function battleMessage(session, info) {
+    const foeName = esc(info.foe.n);
+    if (session.pausedAt) return `Paused. The wild ${foeName} is waiting.`;
+    if (info.remain < 60000) return `${foeName} is almost worn out. Stay with it.`;
+    if (info.partner) return `Go, ${esc(info.partnerName)}! Every focused minute wears ${foeName} down.`;
+    return `Stay on task. Every minute wears ${foeName} down.`;
+  }
+
+  function togglePause() {
+    const session = state.focus;
+    if (!session) return;
+    if (session.pausedAt) {
+      session.pausedTotal += Date.now() - session.pausedAt;
+      session.pausedAt = null;
+    } else {
+      session.pausedAt = Date.now();
+      document.title = "Paused - PocketDex";
+    }
+    save();
+    if (currentRoute && currentRoute.name === "focus") render();
+    else updateFocusWidgets();
+  }
+
+  function restartAnimation(element, className) {
+    if (!element) return;
+    element.classList.remove(className);
+    void element.offsetWidth;
+    element.classList.add(className);
+  }
+
+  function playHit() {
+    restartAnimation($("#foe-sprite"), "hit");
+    restartAnimation($("#ally-sprite"), "lunge");
+    if (pipWindow) {
+      restartAnimation(pipWindow.document.querySelector(".fw-foe"), "hit");
+      restartAnimation(pipWindow.document.querySelector(".fw-ally"), "lunge");
+    }
+  }
+
+  function widgetSignature(session) {
+    if (!session) return "none";
+    const partnerKey = state.partner ? `${state.partner.id}:${levelFor(state.partner.xp)}:${state.partner.nick || ""}` : "-";
+    return [session.id, session.start, Boolean(session.pausedAt), partnerKey].join("|");
+  }
+
+  // Compact widget: shown on every page except Focus while a session runs.
+  function miniWidgetHtml(session) {
+    const info = focusInfo(session);
+    const ally = info.partner ? `<img class="fw-ally" src="${sprite(info.partner.id)}" alt="">` : "";
+    const title = session.pausedAt ? `Paused against ${info.foe.n}` : `Catching ${info.foe.n}`;
+    const sub = info.partner ? `${info.partnerName} &middot; Lv ${levelFor(state.partner.xp)}` : "Focus session";
+    return `
+      <span class="fw-sprites">${ally}<img class="fw-foe" src="${sprite(info.foe.id)}" alt=""></span>
+      <span class="fw-main">
+        <span class="fw-title">${esc(title)}</span>
+        <span class="hp"><span>HP</span><i><u class="fw-hp" style="width:${info.hpPct}%"></u></i></span>
+        <span class="fw-sub">${sub}</span>
+      </span>
+      <span class="fw-time">${fmt(info.remain)}</span>`;
+  }
+
+  // Pop-out widget: a small always-on-top battle window (Document Picture-in-Picture).
+  function pipHtml(session) {
+    const info = focusInfo(session);
+    const paused = Boolean(session.pausedAt);
+    const ally = info.partner
+      ? `<img class="fw-ally" src="${sprite(info.partner.id)}" alt="${esc(info.partnerName)}">`
+      : `<span class="pip-none">No partner</span>`;
+    return `
+      <div class="pip-battle${paused ? " is-paused" : ""}">
+        <div class="pip-foe">
+          <div class="pip-card"><p class="fw-title">${esc(info.foe.n)} <small>Lv ${wildLevel(info.foe)}</small></p>
+            <span class="hp"><span>HP</span><i><u class="fw-hp" style="width:${info.hpPct}%"></u></i></span></div>
+          <img class="fw-foe${paused ? "" : " bob"}" src="${sprite(info.foe.id)}" alt="Wild ${esc(info.foe.n)}">
+        </div>
+        <div class="pip-ally">
+          ${ally}
+          <div class="pip-card"><p class="fw-sub">${info.partner ? `${esc(info.partnerName)} &middot; Lv ${levelFor(state.partner.xp)}` : "Focus"}</p>
+            <p class="fw-time">${fmt(info.remain)}</p></div>
+        </div>
+        <div class="pip-actions">
+          <button class="btn sm primary" data-fw="pause">${paused ? "Resume" : "Pause"}</button>
+          <button class="btn sm ghost" data-fw="open">Open PocketDex</button>
+        </div>
+      </div>`;
+  }
+
+  function tickWidgets(doc, info) {
+    doc.querySelectorAll(".fw-time").forEach((element) => {
+      element.textContent = fmt(info.remain);
+    });
+    doc.querySelectorAll(".fw-hp").forEach((element) => {
+      element.style.width = `${info.hpPct}%`;
+    });
+  }
+
+  function updateFocusWidgets() {
+    const session = state.focus;
+    let widget = document.getElementById("focus-widget");
+    if (!widget) {
+      widget = document.createElement("a");
+      widget.id = "focus-widget";
+      widget.className = "focus-widget";
+      widget.href = "#/focus";
+      widget.hidden = true;
+      document.body.appendChild(widget);
+    }
+    const onFocus = currentRoute && currentRoute.name === "focus";
+    const show = Boolean(session) && !onFocus;
+    widget.hidden = !show;
+    document.body.classList.toggle("has-focus-widget", show);
+    if (!session) {
+      widgetKey = "none";
+      widget.innerHTML = "";
+      return;
+    }
+    const signature = widgetSignature(session);
+    if (signature !== widgetKey) {
+      widgetKey = signature;
+      widget.innerHTML = miniWidgetHtml(session);
+      widget.classList.toggle("is-paused", Boolean(session.pausedAt));
+      widget.setAttribute("aria-label", `Focus session: ${session.pausedAt ? "paused" : "running"} against ${BY_ID.get(session.id).n}. Open Focus.`);
+      if (pipWindow) pipWindow.document.body.innerHTML = pipHtml(session);
+    }
+    const info = focusInfo(session);
+    tickWidgets(document, info);
+    if (pipWindow) tickWidgets(pipWindow.document, info);
+  }
+
+  async function openFocusPip() {
+    if (!("documentPictureInPicture" in window) || !state.focus) return;
+    if (pipWindow) {
+      pipWindow.focus();
+      return;
+    }
+    try {
+      pipWindow = await window.documentPictureInPicture.requestWindow({ width: 340, height: 250 });
+    } catch (error) {
+      toast("Pop-out is not available in this browser.");
+      return;
+    }
+    const doc = pipWindow.document;
+    const base = doc.createElement("base");
+    base.href = location.href;
+    doc.head.appendChild(base);
+    Array.from(document.styleSheets).forEach((sheet) => {
+      try {
+        const style = doc.createElement("style");
+        style.textContent = Array.from(sheet.cssRules).map((rule) => rule.cssText).join("\n");
+        doc.head.appendChild(style);
+      } catch (error) {
+        if (!sheet.href) return;
+        const link = doc.createElement("link");
+        link.rel = "stylesheet";
+        link.href = sheet.href;
+        doc.head.appendChild(link);
+      }
+    });
+    doc.title = "PocketDex focus";
+    doc.body.className = "pip-body";
+    doc.body.innerHTML = pipHtml(state.focus);
+    doc.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-fw]");
+      if (!button) return;
+      if (button.dataset.fw === "pause") {
+        togglePause();
+      } else {
+        window.focus();
+        location.hash = "#/focus";
+      }
+    });
+    pipWindow.addEventListener("pagehide", () => {
+      pipWindow = null;
+    });
+  }
+
+  function closePipAfterFinish(caughtId) {
+    if (!pipWindow) return;
+    const win = pipWindow;
+    if (caughtId) {
+      const p = BY_ID.get(caughtId);
+      win.document.body.innerHTML = `<div class="pip-done"><img src="${sprite(caughtId)}" alt=""><p>Gotcha! ${esc(p.n)} was caught.</p></div>`;
+      setTimeout(() => win.close(), 6000);
+    } else {
+      win.close();
+    }
   }
 
   VIEWS.focus = {
     html(route) {
       const session = state.focus;
       if (session) {
-        const p = BY_ID.get(session.id);
-        const remain = focusRemaining(session);
-        const pct = (remain / (session.minutes * 60000)) * 100;
+        const info = focusInfo(session);
+        const foe = info.foe;
+        const paused = Boolean(session.pausedAt);
+        const canPop = "documentPictureInPicture" in window;
+        let allyHtml = `
+            <div class="pad pad-empty"><span class="pad-ghost" aria-hidden="true"></span></div>
+            <div class="status-card">
+              <p class="sc-name">No partner yet</p>
+              <p class="sc-note">A partner fights beside you and earns ${XP.focusMinute} XP a minute.</p>
+              <a class="btn sm sc-cta" href="#/habits">Choose a partner</a>
+            </div>`;
+        if (info.partner) {
+          const xpView = partnerXpView(info.earnedXp);
+          allyHtml = `
+            <div class="pad"><img class="ally-sprite" id="ally-sprite" src="${sprite(info.partner.id)}" alt="${esc(info.partnerName)}, your partner"></div>
+            <div class="status-card">
+              <p class="sc-name">${esc(info.partnerName)}<span>Lv ${xpView.level}</span></p>
+              <div class="hp ok"><span>HP</span><i><u style="width:100%"></u></i></div>
+              <div class="xp"><span>XP</span><i><u class="xp-now" style="width:${xpView.nowPct}%"></u><u class="xp-gain" id="xp-gain" style="width:${xpView.gainPct}%"></u></i></div>
+              <p class="sc-note" id="xp-note">${xpNote(info)}</p>
+            </div>`;
+        }
         return `
         <section class="battle">
-          <div class="lcd battle-screen">
-            <div class="foe-box"><p>${esc(p.n.toUpperCase())}</p><div class="hp"><span>HP</span><i><u id="hp" style="width:${pct}%"></u></i></div></div>
-            <img class="sprite-xl ${session.pausedAt ? "" : "bob"}" src="${sprite(p.id)}" alt="${esc(p.n)}">
-            <p class="timer" id="timer" aria-live="off">${fmt(remain)}</p>
+          <div class="arena${paused ? " is-paused" : ""}" id="arena">
+            <div class="combatant foe">
+              <div class="status-card">
+                <p class="sc-name">${esc(foe.n)}<span>Lv ${wildLevel(foe)}</span></p>
+                <div class="hp"><span>HP</span><i><u id="hp" style="width:${info.hpPct}%"></u></i></div>
+              </div>
+              <div class="pad"><img class="foe-sprite${paused ? "" : " bob"}" id="foe-sprite" src="${sprite(foe.id)}" alt="Wild ${esc(foe.n)}"></div>
+            </div>
+            <div class="combatant ally">${allyHtml}
+            </div>
           </div>
-          <div class="dialog"><p id="battle-msg">${session.pausedAt ? "Paused. The wild Pokémon is waiting." : `Stay on task. Every minute wears ${esc(p.n)} down.`}</p></div>
+          <div class="command">
+            <p class="cmd-msg" id="battle-msg">${battleMessage(session, info)}</p>
+            <p class="timer" id="timer" aria-live="off">${fmt(info.remain)}</p>
+          </div>
           <div class="row center">
-            <button class="btn primary" data-f="pause">${session.pausedAt ? "Resume" : "Pause"}</button>
+            <button class="btn primary" data-f="pause">${paused ? "Resume" : "Pause"}</button>
             <button class="btn ghost" data-f="run">Run away</button>
+            ${canPop ? `<button class="btn ghost" data-f="popout">Pop out timer</button>` : ""}
           </div>
         </section>`;
       }
@@ -1165,19 +1431,14 @@ function habitStreak(habitId) {
           const wantNotify = $("#notify", view).checked;
           if (wantNotify && window.Notification && Notification.permission === "default") Notification.requestPermission();
           state.focus = { id, minutes, start: Date.now(), pausedAt: null, pausedTotal: 0 };
+          lastHit = null;
           save();
           sfx.select();
           render();
         } else if (action === "pause") {
-          const session = state.focus;
-          if (session.pausedAt) {
-            session.pausedTotal += Date.now() - session.pausedAt;
-            session.pausedAt = null;
-          } else {
-            session.pausedAt = Date.now();
-          }
-          save();
-          render();
+          togglePause();
+        } else if (action === "popout") {
+          openFocusPip();
         } else if (action === "run") {
           if (confirm("Run away? The Pokémon will flee and this session will not count.")) finishFocus(false);
         } else if (action === "random" || action === "pick") {
@@ -1203,17 +1464,30 @@ function habitStreak(habitId) {
   setInterval(() => {
     const session = state.focus;
     if (!session) return;
-    const remain = focusRemaining(session);
-    if (!session.pausedAt) document.title = `${fmt(remain)} - PocketDex`;
-    if (remain <= 0 && !session.pausedAt) {
+    const info = focusInfo(session);
+    if (!session.pausedAt) document.title = `${fmt(info.remain)} - PocketDex`;
+    if (info.remain <= 0 && !session.pausedAt) {
       finishFocus(true);
       return;
     }
+    const sessionKey = `${session.id}-${session.minutes}`;
+    const hitKey = `${sessionKey}:${info.doneMinutes}`;
+    const struck = lastHit !== null && lastHit !== hitKey && lastHit.split(":")[0] === sessionKey;
+    lastHit = hitKey;
     const timer = $("#timer");
     if (timer) {
-      timer.textContent = fmt(remain);
-      $("#hp").style.width = `${(remain / (session.minutes * 60000)) * 100}%`;
+      timer.textContent = fmt(info.remain);
+      $("#hp").style.width = `${info.hpPct}%`;
+      const message = $("#battle-msg");
+      if (message) message.textContent = battleMessage(session, info);
+      const gain = $("#xp-gain");
+      if (gain && state.partner) {
+        gain.style.width = `${partnerXpView(info.earnedXp).gainPct}%`;
+        $("#xp-note").textContent = xpNote(info);
+      }
     }
+    updateFocusWidgets();
+    if (struck) playHit();
   }, 500);
 
   // ---- Habits
