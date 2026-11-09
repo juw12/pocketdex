@@ -41,8 +41,14 @@ psychic and fairy use slate, raspberry, teal and pinks.
 - Today leads with one next-step strip (one sentence, one button) so the page always answers "what now?".
 
 ## Navigation
-Top bar: serif wordmark with a red dot, Dex progress bar, sound toggle. Floating bottom pill tab bar with SVG
-line icons: Today, Pokédex, Focus, Habits, More. More holds Meadow, Field Dex, Quiz, Team, Trainer.
+Top bar: serif wordmark with a red dot, "Caught n / 1025" count, sound toggle. Tabs with SVG line icons:
+Today, Pokédex, Focus, Habits, More (More holds Meadow, Field Dex, Quiz, Team, Trainer). Below 1081 px they
+float in a bottom pill tab bar; from 1081 px they sit in the top bar so nothing covers content on desktop.
+
+## One action per screen
+Each screen has one dark primary button. Secondary actions are outlined; tools (Play cry, Add favourite,
+Add to team, Pop out timer, Keep screen on) are quiet underlined text links. Battle bars use the single
+accent only for the wild Pokemon's HP; the partner's HP and XP are warm neutrals.
 
 ## Signature element
 The Meadow: a low-poly 3D clearing (three.js, bundled) where the Pokémon you caught wander as pixel
