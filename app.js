@@ -84,6 +84,65 @@
     } catch (error) {
       toast("Storage is full. Export a backup from the Trainer page.");
     }
+    buddySync();
+  }
+
+  // ---------------------------------------------------------------- desktop buddy (Windows companion app)
+  // When switched on in Trainer, the partner and the live focus battle are sent to PocketDex Buddy
+  // (desktop/pocketdex_buddy.pyw), which listens on this computer only. Nothing is sent while it is off.
+  const BUDDY_URL = "http://127.0.0.1:47615";
+  let buddyTimer = null;
+  let buddyEvent = null;
+  let buddyLinked = null; // null = unknown, true = answered, false = not running
+
+  function buddyPayload() {
+    const partner = state.partner ? BY_ID.get(state.partner.id) : null;
+    const session = state.focus;
+    const foe = session ? BY_ID.get(session.id) : null;
+    const payload = {
+      partner: partner ? { id: partner.id, name: state.partner.nick || partner.n, level: levelFor(state.partner.xp) } : null,
+      focus: foe ? {
+        foe: { id: foe.id, name: foe.n, level: wildLevel(foe) },
+        minutes: session.minutes,
+        remainMs: Math.round(focusRemaining(session)),
+        paused: Boolean(session.pausedAt),
+      } : null,
+    };
+    if (buddyEvent) payload.event = buddyEvent;
+    return payload;
+  }
+
+  function buddySend() {
+    buddyTimer = null;
+    if (!state.settings.buddy) return;
+    const body = JSON.stringify(buddyPayload());
+    buddyEvent = null;
+    fetch(`${BUDDY_URL}/state`, { method: "POST", headers: { "Content-Type": "text/plain" }, body, mode: "cors", cache: "no-store" })
+      .then((response) => {
+        buddyLinked = response.ok;
+      })
+      .catch(() => {
+        buddyLinked = false;
+      });
+  }
+
+  function buddySync() {
+    if (!state.settings || !state.settings.buddy) return;
+    clearTimeout(buddyTimer);
+    buddyTimer = setTimeout(buddySend, 250);
+  }
+
+  function buddyPing() {
+    return fetch(`${BUDDY_URL}/ping`, { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => {
+        buddyLinked = Boolean(data && data.app === "pocketdex-buddy");
+        return buddyLinked;
+      })
+      .catch(() => {
+        buddyLinked = false;
+        return false;
+      });
   }
 
   // ---------------------------------------------------------------- helpers
@@ -1094,6 +1153,7 @@ function habitStreak(habitId) {
     const doneMinutes = success ? session.minutes : Math.floor((session.minutes * 60000 - focusRemaining(session)) / 60000);
     state.focusLog.push({ d: todayKey(), id: session.id, minutes: success ? session.minutes : doneMinutes, result: success ? "caught" : "fled" });
     state.focus = null;
+    buddyEvent = { type: success ? "caught" : "fled", pokemon: { id: p.id, name: p.n }, at: new Date().toISOString() };
     save();
     document.title = "PocketDex";
     if (success) {
@@ -2481,6 +2541,8 @@ function habitStreak(habitId) {
           <div class="gens">${byGen}</div>
           <h3 class="mt">Settings and data</h3>
           <label class="check"><input type="checkbox" id="set-sound" ${state.settings.sound ? "checked" : ""}><span>Chiptune sound effects</span></label>
+          <label class="check"><input type="checkbox" id="set-buddy" ${state.settings.buddy ? "checked" : ""}><span>Desktop buddy for Windows</span></label>
+          <p class="muted small buddy-help">Your partner walks on the taskbar and on your windows, and focus battles play out beside it. <a href="desktop/pocketdex_buddy.pyw" download>Get the buddy app</a> (needs Python 3), run it, then switch this on. <span id="buddy-status" aria-live="polite"></span></p>
           <p class="muted">Everything is saved in this browser only. Export a backup to move it to another device.</p>
           <div class="row">
             <button class="btn" data-tr="export">Export backup</button>
@@ -2499,6 +2561,29 @@ function habitStreak(habitId) {
         save();
         updateHeader();
       });
+      const buddyStatus = $("#buddy-status", view);
+      const showBuddyStatus = () => {
+        if (!state.settings.buddy) {
+          buddyStatus.textContent = "";
+          return;
+        }
+        buddyStatus.textContent = "Looking for the buddy...";
+        buddyPing().then((linked) => {
+          buddyStatus.textContent = linked ? "Connected." : "Not running on this computer yet.";
+          if (linked) buddySync();
+        });
+      };
+      $("#set-buddy", view).addEventListener("change", (event) => {
+        if (!event.target.checked && buddyLinked) {
+          // tell the buddy the battle is off its screen before going quiet
+          const body = JSON.stringify(Object.assign(buddyPayload(), { focus: null }));
+          fetch(`${BUDDY_URL}/state`, { method: "POST", headers: { "Content-Type": "text/plain" }, body, mode: "cors" }).catch(() => {});
+        }
+        state.settings.buddy = event.target.checked;
+        save();
+        showBuddyStatus();
+      });
+      showBuddyStatus();
       $("#import-file", view).addEventListener("change", (event) => {
         const file = event.target.files[0];
         if (!file) return;
@@ -2607,11 +2692,17 @@ function habitStreak(habitId) {
   });
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && state.focus && focusRemaining(state.focus) <= 0 && !state.focus.pausedAt) finishFocus(true);
+    buddySync();
   });
+  // keep a buddy that was started later (or restarted) in step with this tab
+  setInterval(() => {
+    if (state.settings.buddy && state.focus) buddySync();
+  }, 30000);
 
   // Expose a tiny hook for automated checks.
-  window.PocketDex = { state: () => state, encounterFor, defenseProfile, levelFor, pixelate, TOTAL, mini: () => mini };
+  window.PocketDex = { state: () => state, encounterFor, defenseProfile, levelFor, pixelate, TOTAL, mini: () => mini, buddyPayload };
 
   checkBadges();
   render();
+  buddySync();
 })();

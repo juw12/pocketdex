@@ -23,6 +23,22 @@ are bundled. No account, no server; your progress is saved in the browser.
 
 Navigation: Today, Pokédex, Focus, Habits and More (Meadow, Field Dex, Quiz, Team, Trainer). On phones and tablets they sit in a floating bottom tab bar; on desktop (1081 px and wider) the same tabs move into the top bar so nothing floats over the content.
 
+## Desktop buddy (Windows)
+
+`desktop/pocketdex_buddy.pyw` puts your partner on the Windows desktop with a transparent background, always on top:
+
+- it walks along the taskbar and climbs onto the top edges of open windows
+- it rides along when you move that window, and falls when the window is closed, minimised or covered
+- drag it to pick it up, let go mid-swing to throw it; click for a hop, double-click to open PocketDex
+- right-click for the menu: open PocketDex, start a focus session, choose a partner by Pokedex number, size, walk around, show focus timer, start with Windows, bring to taskbar, quit
+- it hides while a full-screen app or video is in front
+
+Linked to the web app: switch on **Trainer > Desktop buddy for Windows**. The buddy picks up your partner, and during a focus session the wild Pokemon drops in beside it. A small bubble shows the time left with an HP bar. Pauses, the catch and an early end all play out on the desktop.
+
+Run it: install Python 3 from python.org (tkinter is included), then double-click `pocketdex_buddy.pyw` or run `pythonw pocketdex_buddy.pyw`. It uses only the standard library. Sprites come from this repo (or are downloaded once and cached in `%LOCALAPPDATA%\PocketDex`).
+
+Privacy: the buddy listens on `127.0.0.1:47615` only, accepts state from the PocketDex page alone, and sends nothing anywhere. The browser may ask once to allow access to apps on this device. Allow it so the page can reach the buddy.
+
 ## Files
 - `index.html`, `styles.css`, `app.js` - the app (vanilla JS, no build step). `meadow.js` - the 3D Meadow.
 - `vendor/three.min.js` - three.js r160 (MIT). `vendor/sprites-data.js` - sprite bundle used only when the app is opened from disk, so WebGL can read the sprites.

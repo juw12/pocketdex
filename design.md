@@ -59,6 +59,10 @@ tap a Pokémon to see it. A small live window of it opens the Today page.
 Plain, short, calm. Game text only where the originals had it ("A wild SNORLAX appeared!").
 Banned words: supercharge, seamless, unlock, next-level, revolutionary, magic.
 
+## Desktop buddy
+
+The desktop companion follows the same system: the sprite itself is the interface, with no frame and no window chrome. The only surface is a paper-coloured bubble (#fffdf9, 1px #e3d9c8 line, 12px radius), with a Georgia time title, Segoe UI muted body and a single 4px HP bar in the accent. Copy stays calm ("Paused · Eevee is waiting", "Caught Eevee!"). It never flashes for attention, and it hides behind full-screen apps.
+
 ## Banned defaults
 Purple or indigo; emoji or emoji-like glyphs as icons; gradient text; glassmorphism; glow blobs;
 centred-everything hero; fake testimonials; Inter as the only face.
