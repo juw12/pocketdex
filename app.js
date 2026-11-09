@@ -272,6 +272,10 @@
 
   const sfx = {
     blip: () => tone(1320, 0, 0.05, 0.03),
+    pet: () => {
+      tone(1175, 0, 0.05, 0.03, "triangle");
+      tone(1568, 0.06, 0.08, 0.03, "triangle");
+    },
     select: () => {
       tone(988, 0, 0.06);
       tone(1319, 0.06, 0.08);
@@ -336,6 +340,7 @@
     save();
     if (fresh) {
       sfx.catch();
+      catchScene(id);
       toast(`Gotcha! ${p.n} was caught. ${caughtCount()} of ${TOTAL} registered.`);
       checkBadges();
     }
@@ -358,6 +363,251 @@
     }
     return DEX[0];
   }
+
+
+  // ---------------------------------------------------------------- feelings: moods, emotes, friendship, celebrations
+  // Pixel emotes are tiny bitmaps drawn as SVG (no emoji, no icon font).
+  const EMOTE_ART = {
+    heart: ["#c0432f", [".XX.XX.", "XXXXXXX", "XXXXXXX", ".XXXXX.", "..XXX..", "...X..."]],
+    note: ["#2b2621", ["..XXXX", "..X..X", "..X..X", "..X..X", "XXX.XX", "XXX.XX"]],
+    zzz: ["#4a6f8a", ["......XXX", ".......X.", "......XXX", "XXXXX....", "...X.....", "..X......", ".X.......", "XXXXX...."]],
+    sparkle: ["#c98f1e", ["...X...", "...X...", "..XXX..", "XXXXXXX", "..XXX..", "...X...", "...X..."]],
+    bang: ["#c0432f", ["XX", "XX", "XX", "XX", "XX", "..", "XX"]],
+    sweat: ["#5b8fb0", ["..X..", "..X..", ".XXX.", "XXXXX", "XXXXX", "XXXXX", ".XXX."]],
+    dots: ["#6b6157", ["XX.XX.XX", "XX.XX.XX"]],
+  };
+
+  function pixelArt(name, size) {
+    const [color, rows] = EMOTE_ART[name] || EMOTE_ART.dots;
+    const width = rows[0].length;
+    const height = rows.length;
+    let rects = "";
+    rows.forEach((row, y) => {
+      [...row].forEach((cell, x) => {
+        if (cell === "X") rects += `<rect x="${x}" y="${y}" width="1" height="1"/>`;
+      });
+    });
+    const px = size || 18;
+    return `<svg class="px-art" viewBox="0 0 ${width} ${height}" width="${Math.round((px * width) / Math.max(width, height))}" height="${Math.round((px * height) / Math.max(width, height))}" fill="${color}" shape-rendering="crispEdges" aria-hidden="true">${rects}</svg>`;
+  }
+
+  const reducedMotion = () => window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Days since the last visit, measured once when the app opens.
+  const awayDays = (() => {
+    const last = state.lastVisit;
+    const today = todayKey();
+    state.lastVisit = today;
+    if (!last || last >= today) return 0;
+    const [y1, m1, d1] = last.split("-").map(Number);
+    const [y2, m2, d2] = today.split("-").map(Number);
+    return Math.round((new Date(y2, m2 - 1, d2) - new Date(y1, m1 - 1, d1)) / 86400000);
+  })();
+
+  function partnerName() {
+    if (!state.partner) return "";
+    const p = BY_ID.get(state.partner.id);
+    return state.partner.nick || (p ? p.n : "");
+  }
+
+  function partnerMood() {
+    if (!state.partner) return null;
+    const name = partnerName();
+    const key = todayKey();
+    const hour = new Date().getHours();
+    const done = state.habits.filter((h) => (state.habitLog[key] || {})[h.id]).length;
+    const minutes = focusMinutesOn(key);
+    if (state.focus) return { id: "battle", emote: "bang", anim: "ready", line: `${name} is battling beside you. Stay with it.` };
+    if (awayDays >= 2) return { id: "missed", emote: "heart", anim: "bounce", line: `${name} missed you. It has been ${awayDays} days.` };
+    if ((state.habits.length && done === state.habits.length) || minutes >= 50) {
+      return { id: "proud", emote: "sparkle", anim: "bounce", line: `${name} is proud of what you did today.` };
+    }
+    if (hour >= 23 || hour < 5) return { id: "sleepy", emote: "zzz", anim: "doze", line: `${name} is getting sleepy. Rest soon.` };
+    if (done || minutes) return { id: "happy", emote: "note", anim: "sway", line: `${name} is in a good mood.` };
+    if (hour < 11) return { id: "fresh", emote: "sparkle", anim: "sway", line: `${name} is up early and ready to train.` };
+    return { id: "curious", emote: "dots", anim: "look", line: `${name} is waiting to train with you.` };
+  }
+
+  const FRIEND_WORDS = ["Just met", "Friendly", "Close", "Very close", "Inseparable", "Best friends"];
+  function friendship() {
+    const love = Math.max(0, Math.min(100, (state.partner && state.partner.love) || 0));
+    const hearts = Math.min(5, Math.floor(love / 20));
+    return { love, hearts, word: FRIEND_WORDS[hearts] };
+  }
+
+  function addLove(amount) {
+    if (!state.partner) return;
+    state.partner.love = Math.max(0, Math.min(100, (state.partner.love || 0) + amount));
+  }
+
+  function friendRow() {
+    const f = friendship();
+    const hearts = [0, 1, 2, 3, 4].map((i) => `<i class="${i < f.hearts ? "on" : ""}">${pixelArt("heart", 13)}</i>`).join("");
+    return `<p class="friend" title="Friendship ${f.love} / 100"><span class="friend-hearts">${hearts}</span><span class="friend-word">${f.word}</span></p>`;
+  }
+
+  // A partner sprite you can pet, with its mood shown as a pixel emote above its head.
+  function partnerFeel(sizeClass) {
+    const p = state.partner ? BY_ID.get(state.partner.id) : null;
+    const mood = partnerMood();
+    if (!p || !mood) return "";
+    return `<div class="feel mood-${mood.id}" data-feel>
+      <button class="pet-target" type="button" data-pet aria-label="Pet ${esc(partnerName())}">
+        <img class="${sizeClass} anim-${mood.anim}" src="${sprite(p.id)}" alt="${esc(p.n)}">
+      </button>
+      <span class="emote" data-emote="${mood.emote}">${pixelArt(mood.emote)}</span>
+    </div>`;
+  }
+
+  const PET_LINES = ["looks happy.", "leans into your hand.", "does a little spin.", "makes a soft, happy sound.", "wants to play a bit more."];
+  function petPartner(button) {
+    if (!state.partner) return;
+    const feel = button.closest("[data-feel]");
+    const today = todayKey();
+    if (state.partner.petDay !== today) {
+      state.partner.petDay = today;
+      state.partner.pets = 0;
+    }
+    const name = partnerName();
+    let line;
+    if (state.partner.pets < 10) {
+      state.partner.pets += 1;
+      addLove(2);
+      line = `${name} ${PET_LINES[state.partner.pets % PET_LINES.length]}`;
+    } else {
+      line = `${name} is content for now. Maybe later.`;
+    }
+    save();
+    sfx.pet();
+    const img = button.querySelector("img");
+    img.classList.remove("hop");
+    void img.offsetWidth;
+    img.classList.add("hop");
+    const emote = feel && feel.querySelector(".emote");
+    if (emote) {
+      emote.dataset.emote = "heart";
+      emote.innerHTML = pixelArt("heart");
+      emote.classList.remove("pop");
+      void emote.offsetWidth;
+      emote.classList.add("pop");
+    }
+    const scope = button.closest(".panel, .partner-card, section") || document;
+    const lineBox = scope.querySelector("[data-mood-line]");
+    if (lineBox) lineBox.textContent = line;
+    const friendBox = scope.querySelector(".friend");
+    if (friendBox) friendBox.outerHTML = friendRow();
+    floatHearts(button);
+  }
+
+  // ---- effects layer (never blocks clicks; skipped when the system asks for reduced motion)
+  let fxLayer = null;
+  let fxQueue = Promise.resolve();
+  let lastPointer = { x: 0, y: 0, at: 0 };
+  document.addEventListener("pointerdown", (event) => {
+    lastPointer = { x: event.clientX, y: event.clientY, at: Date.now() };
+  }, true);
+
+  function fxRoot() {
+    if (!fxLayer) {
+      fxLayer = document.createElement("div");
+      fxLayer.id = "fx";
+      fxLayer.setAttribute("aria-hidden", "true");
+      document.body.appendChild(fxLayer);
+    }
+    return fxLayer;
+  }
+
+  function burst(x, y, count) {
+    if (reducedMotion()) return;
+    const root = fxRoot();
+    const colors = ["#c0432f", "#c98f1e", "#3f7f52", "#5b8fb0", "#e0a0a8"];
+    for (let i = 0; i < (count || 12); i++) {
+      const bit = document.createElement("i");
+      const angle = (Math.PI * 2 * i) / (count || 12) + Math.random() * 0.5;
+      const reach = 28 + Math.random() * 34;
+      bit.className = "fx-bit";
+      bit.style.left = `${x}px`;
+      bit.style.top = `${y}px`;
+      bit.style.setProperty("--dx", `${Math.cos(angle) * reach}px`);
+      bit.style.setProperty("--dy", `${Math.sin(angle) * reach - 10}px`);
+      bit.style.background = colors[i % colors.length];
+      root.appendChild(bit);
+      setTimeout(() => bit.remove(), 900);
+    }
+  }
+
+  function burstAtPointer() {
+    if (Date.now() - lastPointer.at < 1500) burst(lastPointer.x, lastPointer.y, 12);
+  }
+
+  function floatHearts(element) {
+    if (reducedMotion()) return;
+    const box = element.getBoundingClientRect();
+    const root = fxRoot();
+    for (let i = 0; i < 3; i++) {
+      const heart = document.createElement("span");
+      heart.className = "fx-heart";
+      heart.innerHTML = pixelArt("heart", 14);
+      heart.style.left = `${box.left + box.width / 2 + (i - 1) * 18}px`;
+      heart.style.top = `${box.top + box.height * 0.25}px`;
+      heart.style.animationDelay = `${i * 120}ms`;
+      root.appendChild(heart);
+      setTimeout(() => heart.remove(), 1500);
+    }
+  }
+
+  // One full-screen moment at a time: they queue instead of overlapping.
+  function scene(html, duration, className) {
+    if (reducedMotion()) return;
+    fxQueue = fxQueue.then(
+      () =>
+        new Promise((resolve) => {
+          const card = document.createElement("div");
+          card.className = `fx-scene ${className || ""}`;
+          card.innerHTML = html;
+          fxRoot().appendChild(card);
+          setTimeout(() => {
+            card.classList.add("out");
+            setTimeout(() => {
+              card.remove();
+              resolve();
+            }, 320);
+          }, duration);
+        })
+    );
+  }
+
+  function catchScene(id) {
+    const p = BY_ID.get(id);
+    if (!p) return;
+    scene(
+      `<div class="catch-stage">
+        <img class="catch-mon" src="${sprite(id)}" alt="">
+        <span class="ball"><span class="ball-top"></span><span class="ball-band"></span><span class="ball-btn"></span></span>
+        <span class="catch-stars">${pixelArt("sparkle", 16)}${pixelArt("sparkle", 12)}${pixelArt("sparkle", 14)}</span>
+      </div>
+      <p class="scene-title">Gotcha!</p><p class="scene-sub">${esc(p.n)} was caught</p>`,
+      3000,
+      "catch"
+    );
+  }
+
+  function levelScene(id, level) {
+    const p = BY_ID.get(id);
+    if (!p) return;
+    scene(
+      `<div class="level-stage"><img class="level-mon" src="${sprite(id)}" alt="">
+        <span class="level-rays"></span></div>
+      <p class="scene-title">Lv ${level}</p><p class="scene-sub">${esc(partnerName())} grew stronger</p>`,
+      2200,
+      "level"
+    );
+  }
+
+  document.addEventListener("click", (event) => {
+    const pet = event.target.closest("[data-pet]");
+    if (pet) petPartner(pet);
+  });
 
   // ---------------------------------------------------------------- partner / xp
   const XP = { habit: 40, focusMinute: 5 };
@@ -388,6 +638,7 @@
     if (after > before && amount > 0) {
       const p = BY_ID.get(state.partner.id);
       sfx.level();
+      levelScene(p.id, after);
       toast(`${p.n} grew to Lv ${after}! (${reason})`);
       maybeEvolve();
     }
@@ -535,6 +786,7 @@ function habitStreak(habitId) {
 
   let currentRoute = null;
   let activeMeadow = null;
+  let lastRenderedRoute = "";
   function render() {
     const route = parseRoute();
     currentRoute = route;
@@ -555,6 +807,8 @@ function habitStreak(habitId) {
     const view = previousView.cloneNode(false);
     previousView.replaceWith(view);
     view.dataset.route = route.name;
+    if (lastRenderedRoute === route.name) view.classList.add("stay");
+    lastRenderedRoute = route.name;
     const renderer = VIEWS[route.name];
     view.innerHTML = renderer.html(route);
     if (renderer.mount) renderer.mount(view, route);
@@ -860,10 +1114,12 @@ function habitStreak(habitId) {
         const lo = xpForLevel(level);
         const hi = xpForLevel(level + 1);
         const pct = Math.round(((state.partner.xp - lo) / (hi - lo)) * 100);
+        const mood = partnerMood();
         partnerBlock = `<div class="panel partner"><h3>Partner</h3>
-          <div class="partner-row"><img class="sprite-md bob" src="${sprite(partner.id)}" alt="${esc(partner.n)}">
+          <div class="partner-row">${partnerFeel("sprite-md")}
           <div><p class="big-name">${esc(state.partner.nick || partner.n)}</p><p class="muted">Lv ${level} &middot; ${state.partner.xp - lo} / ${hi - lo} XP</p>
-          <div class="xpbar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><u style="width:${pct}%"></u></div></div></div></div>`;
+          <div class="xpbar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><u style="width:${pct}%"></u></div>${friendRow()}</div></div>
+          <p class="mood-line" data-mood-line>${esc(mood.line)}</p></div>`;
       }
 
       return `
@@ -943,6 +1199,8 @@ function habitStreak(habitId) {
     const habit = state.habits.find((h) => h.id === habitId);
     if (done) {
       sfx.select();
+      burstAtPointer();
+      addLove(3);
       addXp(XP.habit, habit ? habit.name : "habit");
       checkBadges();
     } else {
@@ -1157,6 +1415,7 @@ function habitStreak(habitId) {
     save();
     document.title = "PocketDex";
     if (success) {
+      addLove(5);
       catchPokemon(session.id, "focus");
       addXp(session.minutes * XP.focusMinute, `${session.minutes} min focus`);
       if (!navigator.serviceWorker && window.Notification && Notification.permission === "granted" && document.hidden) {
@@ -1971,8 +2230,10 @@ function habitStreak(habitId) {
         <section class="panel" id="partner-panel">
           <h3>Partner Pokémon</h3>
           ${partner
-            ? `<div class="partner-big lcd"><img class="sprite-xl bob" src="${sprite(partner.id)}" alt="${esc(partner.n)}"></div>
+            ? `<div class="partner-big lcd">${partnerFeel("sprite-xl")}</div>
                <p class="big-name">${esc(state.partner.nick || partner.n)} <span class="muted">Lv ${level}</span></p>
+               <p class="mood-line" data-mood-line>${esc(partnerMood().line)}</p>
+               ${friendRow()}
                <div class="xpbar"><u style="width:${pct}%"></u></div>
                <p class="muted">${hi - state.partner.xp} XP to Lv ${level + 1}. ${CHILDREN.get(partner.id) ? `Evolves at Lv ${evolutionStage(partner.id) === 1 ? 16 : 32}.` : "Final form."}</p>
                <div class="row"><button class="btn ghost sm" data-p="nick">Nickname</button><button class="btn ghost sm" data-p="change">Change partner</button></div>`
@@ -2541,6 +2802,11 @@ function habitStreak(habitId) {
           <div class="gens">${byGen}</div>
           <h3 class="mt">Settings and data</h3>
           <label class="check"><input type="checkbox" id="set-sound" ${state.settings.sound ? "checked" : ""}><span>Chiptune sound effects</span></label>
+          <h3 class="mt">PocketDex app</h3>
+          ${nativeApp()
+            ? `<p class="muted small">You are using the PocketDex app for Windows. It works offline and keeps its own save.</p>`
+            : `<p class="muted small">Use PocketDex as an app: on Windows, <a href="downloads/PocketDex-Windows.zip" download>download PocketDex for Windows</a> (unzip, then open PocketDex.exe). On a phone, open the browser menu and choose Add to Home screen.</p>
+               <p id="install-slot" ${installPrompt ? "" : "hidden"}><button class="btn sm" type="button" data-tr="install">Install PocketDex</button></p>`}
           <label class="check"><input type="checkbox" id="set-buddy" ${state.settings.buddy ? "checked" : ""}><span>Desktop buddy for Windows</span></label>
           <p class="muted small buddy-help">Your partner walks on the taskbar and on your windows, and focus battles play out beside it. <a href="desktop/pocketdex_buddy.pyw" download>Get the buddy app</a> (needs Python 3), run it, then switch this on. <span id="buddy-status" aria-live="polite"></span></p>
           <p class="muted">Everything is saved in this browser only. Export a backup to move it to another device.</p>
@@ -2581,7 +2847,11 @@ function habitStreak(habitId) {
         }
         state.settings.buddy = event.target.checked;
         save();
-        showBuddyStatus();
+        if (state.settings.buddy && nativeApp()) {
+          window.pywebview.api.start_buddy().then(showBuddyStatus);
+        } else {
+          showBuddyStatus();
+        }
       });
       showBuddyStatus();
       $("#import-file", view).addEventListener("change", (event) => {
@@ -2611,6 +2881,12 @@ function habitStreak(habitId) {
             save();
             render();
           }
+        } else if (action === "install" && installPrompt) {
+          installPrompt.prompt();
+          installPrompt.userChoice.finally(() => {
+            installPrompt = null;
+            render();
+          });
         } else if (action === "export") {
           const blob = new Blob([JSON.stringify(state, null, 1)], { type: "application/json" });
           const link = document.createElement("a");
@@ -2699,8 +2975,41 @@ function habitStreak(habitId) {
     if (state.settings.buddy && state.focus) buddySync();
   }, 30000);
 
+
+  // ---------------------------------------------------------------- app shell (Windows app and install prompt)
+  // In the PocketDex Windows app the page talks to the native side through window.pywebview.api.
+  const nativeApp = () => Boolean(window.pywebview && window.pywebview.api);
+  let installPrompt = null;
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    installPrompt = event;
+    const slot = document.querySelector("#install-slot");
+    if (slot) slot.hidden = false;
+  });
+  function showUpdateBanner(info) {
+    if (!info || document.querySelector("#update-banner")) return;
+    const banner = document.createElement("div");
+    banner.id = "update-banner";
+    banner.className = "update-banner";
+    banner.setAttribute("role", "status");
+    banner.innerHTML = `<span><b>PocketDex ${esc(info.latest)} is ready.</b> ${esc(info.notes || "")}</span>
+      <a class="btn sm primary" href="${esc(info.url)}" target="_blank" rel="noopener">Download</a>
+      <button class="text-link" type="button" data-dismiss-update>Later</button>`;
+    banner.querySelector("[data-dismiss-update]").addEventListener("click", () => banner.remove());
+    document.body.appendChild(banner);
+  }
+
+  window.addEventListener("pywebviewready", () => {
+    document.documentElement.classList.add("in-app");
+    setTimeout(() => {
+      window.pywebview.api.check_update().then(showUpdateBanner).catch(() => {});
+    }, 4000);
+    if (state.settings.buddy) window.pywebview.api.start_buddy().then(() => buddySync());
+    if (currentRoute && currentRoute.name === "trainer") render();
+  });
+
   // Expose a tiny hook for automated checks.
-  window.PocketDex = { state: () => state, encounterFor, defenseProfile, levelFor, pixelate, TOTAL, mini: () => mini, buddyPayload };
+  window.PocketDex = { state: () => state, encounterFor, defenseProfile, levelFor, pixelate, TOTAL, mini: () => mini, buddyPayload, partnerMood, friendship, showUpdateBanner };
 
   checkBadges();
   render();

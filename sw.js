@@ -1,5 +1,5 @@
 /* PocketDex offline cache: core files up front, sprites cached on first view. */
-const CACHE = "pocketdex-v10";
+const CACHE = "pocketdex-v12";
 const CORE = [
   "./",
   "index.html",
@@ -10,7 +10,9 @@ const CORE = [
   "vendor/three.min.js",
   "fonts/fonts.css",
   "fonts/silkscreen-400.woff2",
-  "manifest.webmanifest"
+  "manifest.webmanifest",
+  "icons/icon-192.png",
+  "icons/icon-512.png"
 ];
 
 self.addEventListener("install", (event) => {

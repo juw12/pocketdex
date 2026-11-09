@@ -22,12 +22,15 @@ import os
 import queue
 import random
 import re
+import socket
+import subprocess
 import sys
 import threading
 import time
 import traceback
 import tkinter as tk
 import tkinter.font as tkfont
+import urllib.parse
 import urllib.request
 import webbrowser
 import winreg
@@ -37,6 +40,8 @@ from tkinter import simpledialog
 
 APP_URL = "https://juw12.github.io/pocketdex/"
 PORT = 47615
+APP_PORT = 47616  # the PocketDex Windows app, when it is open
+IDLE_SLEEP_SECONDS = 180
 VERSION = 1
 KEY = "#010203"  # window colour that Windows renders as fully transparent
 TICK_MS = 33
@@ -166,6 +171,18 @@ def keep_on_top(hwnd):
     user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0002 | 0x0001 | 0x0010)
 
 
+class LASTINPUTINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wt.UINT), ("dwTime", wt.DWORD)]
+
+
+def user_idle_seconds():
+    info = LASTINPUTINFO()
+    info.cbSize = ctypes.sizeof(LASTINPUTINFO)
+    if not user32.GetLastInputInfo(ctypes.byref(info)):
+        return 0.0
+    return max(0.0, (ctypes.windll.kernel32.GetTickCount() - info.dwTime) / 1000.0)
+
+
 def foreground_is_fullscreen():
     hwnd = user32.GetForegroundWindow()
     if not hwnd:
@@ -246,6 +263,8 @@ def sprite_path(pokemon_id):
 
 
 def pythonw_command():
+    if getattr(sys, "frozen", False):
+        return f'"{sys.executable}" --buddy'
     exe = Path(sys.executable)
     windowless = exe.with_name("pythonw.exe")
     runner = windowless if windowless.exists() else exe
@@ -332,9 +351,24 @@ class LinkHandler(BaseHTTPRequestHandler):
         self.reply(200, b'{"ok":true}')
 
 
+class ExclusiveServer(ThreadingHTTPServer):
+    """Refuses to share its port, so a second copy can tell that one is already running.
+
+    Python's HTTPServer sets SO_REUSEADDR, which on Windows lets two processes bind the same port.
+    """
+
+    allow_reuse_address = False
+    daemon_threads = True
+
+    def server_bind(self):
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
 def start_link(inbox):
     LinkHandler.inbox = inbox
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), LinkHandler)
+    server = ExclusiveServer(("127.0.0.1", PORT), LinkHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
 
@@ -662,6 +696,95 @@ class Creature:
         self.win.destroy()
 
 
+# Pixel emotes, the same little bitmaps the PocketDex app uses.
+EMOTE_ART = {
+    "heart": ("#c0432f", [".XX.XX.", "XXXXXXX", "XXXXXXX", ".XXXXX.", "..XXX..", "...X..."]),
+    "note": ("#2b2621", ["..XXXX", "..X..X", "..X..X", "..X..X", "XXX.XX", "XXX.XX"]),
+    "zzz": ("#4a6f8a", ["......XXX", ".......X.", "......XXX", "XXXXX....", "...X.....", "..X......", ".X.......", "XXXXX...."]),
+    "sparkle": ("#c98f1e", ["...X...", "...X...", "..XXX..", "XXXXXXX", "..XXX..", "...X...", "...X..."]),
+    "bang": ("#c0432f", ["XX", "XX", "XX", "XX", "XX", "..", "XX"]),
+    "sweat": ("#5b8fb0", ["..X..", "..X..", ".XXX.", "XXXXX", "XXXXX", "XXXXX", ".XXX."]),
+    "dots": ("#6b6157", ["XX.XX.XX", "XX.XX.XX"]),
+}
+
+
+class Emote:
+    """A tiny speech bubble with a pixel emote, next to a Pokemon's head."""
+
+    CELL = 3
+    PAD = 6
+
+    def __init__(self, app):
+        self.win = tk.Toplevel(app.root)
+        self.win.overrideredirect(True)
+        self.win.attributes("-topmost", True)
+        self.win.attributes("-transparentcolor", KEY)
+        self.win.configure(bg=KEY)
+        self.canvas = tk.Canvas(self.win, bg=KEY, highlightthickness=0, bd=0)
+        self.canvas.pack()
+        self.hwnd = make_quiet(self.win)
+        self.win.withdraw()
+        self.name = None
+        self.drawn = None
+        self.until = 0.0
+        self.sticky = False
+        self.shown_at = 0.0
+
+    def show(self, name, seconds=2.5):
+        self.name = name
+        self.sticky = seconds is None
+        self.until = 0.0 if self.sticky else time.time() + seconds
+        self.shown_at = time.time()
+
+    def clear(self, name=None):
+        if name is None or self.name == name:
+            self.name = None
+
+    def draw(self):
+        color, rows = EMOTE_ART[self.name]
+        width = len(rows[0]) * self.CELL + self.PAD * 2
+        height = len(rows) * self.CELL + self.PAD * 2
+        width = max(width, height)
+        self.canvas.delete("all")
+        self.canvas.configure(width=width + 2, height=height + 8)
+        r = 8
+        x0, y0, x1, y1 = 1, 1, width, height
+        points = [x0 + r, y0, x1 - r, y0, x1, y0, x1, y0 + r, x1, y1 - r, x1, y1,
+                  x1 - r, y1, x0 + r, y1, x0, y1, x0, y1 - r, x0, y0 + r, x0, y0]
+        self.canvas.create_polygon(points, smooth=True, fill=PAPER, outline=LINE)
+        self.canvas.create_polygon(5, height - 2, 13, height - 2, 4, height + 6, fill=PAPER, outline=LINE)
+        self.canvas.create_line(6, height - 1, 12, height - 1, fill=PAPER, width=2)
+        art_w = len(rows[0]) * self.CELL
+        art_h = len(rows) * self.CELL
+        ox = (width - art_w) // 2 + 1
+        oy = (height - art_h) // 2 + 1
+        for y, row in enumerate(rows):
+            for x, cell in enumerate(row):
+                if cell == "X":
+                    self.canvas.create_rectangle(
+                        ox + x * self.CELL, oy + y * self.CELL,
+                        ox + (x + 1) * self.CELL - 1, oy + (y + 1) * self.CELL - 1,
+                        fill=color, outline=color,
+                    )
+        self.drawn = self.name
+        self.size = (width + 2, height + 8)
+
+    def update(self, creature, now, hidden):
+        if hidden or not self.name or (not self.sticky and now > self.until):
+            self.name = None if (self.name and not self.sticky and now > self.until) else self.name
+            self.win.withdraw()
+            return
+        if self.drawn != self.name:
+            self.draw()
+        width, height = self.size
+        rise = min(6, int((now - self.shown_at) * 30))  # pops up a little when it appears
+        drift = int(math.sin(now * 3) * 2)
+        left = int(creature.x + creature.width / 2 - 4)
+        top = int(creature.feet - creature.height - height + 10 - rise + drift)
+        self.win.geometry(f"{width}x{height}+{left}+{top}")
+        self.win.deiconify()
+
+
 class Bubble:
     """A small speech bubble that floats above the partner."""
 
@@ -766,6 +889,8 @@ class BuddyApp:
         self.partner.feet = float(work[3] - 300)
         self.foe = None
         self.bubble = Bubble(self)
+        self.emote = Emote(self)
+        self.asleep = False
         self.menu = None
         threading.Thread(target=self.fetch_names, daemon=True).start()
         self.say(partner.get("name") or "Hello", "Right-click me for options", 4)
@@ -818,6 +943,7 @@ class BuddyApp:
         self.foe.mode = "fall"
         self.last_minute = None
         self.say(f"A wild {self.name_of(focus['foe'])}", "Focus to wear it down", 3)
+        self.emote.show("bang", 2.5)
 
     def end_battle(self, event, timed_out=False):
         """Finish the desktop battle: caught, fled, timed out, or quietly (buddy switched off)."""
@@ -833,11 +959,13 @@ class BuddyApp:
             foe.flash_until = time.time() + 1.4
             self.root.after(1500, foe.destroy)
             self.say(f"Caught {name}!", "Registered in your Pokedex", 6)
+            self.emote.show("sparkle", 4)
             self.partner.hop(8)
             self.root.after(700, lambda: self.partner.hop(6))
             return
         if kind == "fled":
             self.say(f"{name} wandered off", "The session ended early", 5)
+            self.emote.show("dots", 3)
         elif kind == "timeout":
             self.say(f"{name} is waiting", "Open PocketDex to finish", 6)
         foe.walk_dir = 1 if foe.x > self.partner.x else -1
@@ -878,6 +1006,7 @@ class BuddyApp:
                 if creature:
                     keep_on_top(creature.hwnd)
             keep_on_top(self.bubble.hwnd)
+            keep_on_top(self.emote.hwnd)
         if now - self.windows_at > 0.12:
             self.windows = top_level_windows()
             self.windows_at = now
@@ -891,10 +1020,32 @@ class BuddyApp:
                         (creature.win.withdraw if should_hide else creature.win.deiconify)()
                 if should_hide:
                     self.bubble.hide()
+                    self.emote.win.withdraw()
         if not self.hidden:
+            self.update_mood(now)
             self.update_creatures(now)
             self.update_bubble(now)
+        self.emote.update(self.partner, now, self.hidden)
         self.publish_status()
+
+    def update_mood(self, now):
+        """Feelings that come from what is going on: dozing while you are away, nervous while paused."""
+        idle = user_idle_seconds()
+        sleepy = idle > IDLE_SLEEP_SECONDS and not self.focus and self.partner.mode == "stand"
+        if sleepy and not self.asleep:
+            self.asleep = True
+            self.partner.walk_dir = 0
+            self.emote.show("zzz", None)
+        elif not sleepy and self.asleep:
+            self.asleep = False
+            self.emote.clear("zzz")
+            self.emote.show("sparkle", 2)
+            self.partner.hop(5)
+        if self.focus and self.focus["paused"]:
+            if self.emote.name != "sweat":
+                self.emote.show("sweat", None)
+        else:
+            self.emote.clear("sweat")
 
     def publish_status(self):
         """Small read-only snapshot for GET /status (used by tests and the web app)."""
@@ -922,6 +1073,8 @@ class BuddyApp:
                 "paused": self.focus["paused"],
             },
             "bubble": None if self.bubble.shown is None else self.bubble.shown[0],
+            "emote": self.emote.name,
+            "asleep": self.asleep,
             "hidden": self.hidden,
         }
 
@@ -955,7 +1108,9 @@ class BuddyApp:
             else:
                 foe.place()
         else:
-            partner.wander(self.config.get("wander", True))
+            partner.wander(self.config.get("wander", True) and not self.asleep)
+            if partner.walk_dir and random.random() < 0.002 and not self.emote.name:
+                self.emote.show("note", 2)
         for foe in list(self.leaving):
             if now >= foe.leave_until:
                 self.leaving.remove(foe)
@@ -1002,6 +1157,7 @@ class BuddyApp:
     # -------------------------------------------------- interaction
     def on_poke(self, creature):
         if creature is self.partner:
+            self.emote.show("heart", 2.5)
             pokemon = self.partner.pokemon
             level = f"Lv {pokemon['level']}" if pokemon.get("level") else "Your partner"
             if self.focus:
@@ -1011,8 +1167,18 @@ class BuddyApp:
         else:
             self.say(self.name_of(creature.pokemon), "A wild Pokemon. Stay focused", 2.5)
 
-    def open_app(self):
-        webbrowser.open(APP_URL + ("#/focus" if self.focus else "#/today"))
+    def open_app(self, route=None):
+        route = route or ("#/focus" if self.focus else "#/today")
+        try:
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with opener.open(f"http://127.0.0.1:{APP_PORT}/__show?hash={urllib.parse.quote(route)}", timeout=1.5):
+                return
+        except OSError:
+            pass
+        if getattr(sys, "frozen", False):
+            subprocess.Popen([sys.executable], creationflags=0x00000008)
+        else:
+            webbrowser.open(APP_URL + route)
 
     def show_menu(self, event):
         menu = tk.Menu(self.root, tearoff=0)
@@ -1021,7 +1187,7 @@ class BuddyApp:
         menu.add_command(label=f"{self.name_of(pokemon)}{level}", state="disabled")
         menu.add_separator()
         menu.add_command(label="Open PocketDex", command=self.open_app)
-        menu.add_command(label="Start a focus session", command=lambda: webbrowser.open(APP_URL + "#/focus"))
+        menu.add_command(label="Start a focus session", command=lambda: self.open_app("#/focus"))
         menu.add_command(label="Choose partner by number...", command=self.choose_partner)
         menu.add_separator()
         sizes = tk.Menu(menu, tearoff=0)

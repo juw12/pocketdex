@@ -668,6 +668,189 @@ kbd { font: 600 0.72rem var(--sans); border: 1px solid var(--line); border-botto
   .meadow-pick img { width: 52px; height: 52px; }
 }
 
+/* ---------------------------------------------------------------- feelings and motion
+   Moods, pixel emotes, petting, celebrations. Everything here stops under prefers-reduced-motion. */
+
+/* page enter: panels rise in a short stagger; in-page re-renders (.stay) do not animate */
+.view > * { animation: rise 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.view > *:nth-child(2) { animation-delay: 0.04s; }
+.view > *:nth-child(3) { animation-delay: 0.08s; }
+.view > *:nth-child(4) { animation-delay: 0.12s; }
+.view > *:nth-child(n + 5) { animation-delay: 0.16s; }
+.view.stay > * { animation: none; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+
+.btn { transition: transform 0.12s ease, box-shadow 0.18s ease, background-color 0.18s ease; }
+.btn:active { transform: translateY(1px) scale(0.98); }
+
+/* wild Pokemon steps out of the grass */
+.encounter-screen img.bob { animation: wild-in 0.7s cubic-bezier(0.2, 0.9, 0.3, 1.25) both, bob 2.4s ease-in-out 0.7s infinite; }
+@keyframes wild-in { from { opacity: 0; transform: translateX(46px) scale(0.86); filter: brightness(0); } 60% { filter: brightness(0); } }
+
+/* partner with a mood */
+.feel { position: relative; display: inline-grid; place-items: center; }
+.pet-target {
+  background: none; border: 0; padding: 4px; border-radius: 18px; cursor: pointer; line-height: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.pet-target:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pet-target img { transform-origin: 50% 92%; }
+.anim-bounce { animation: mood-bounce 1.3s cubic-bezier(0.3, 0, 0.4, 1) infinite; }
+.anim-sway { animation: mood-sway 3s ease-in-out infinite; }
+.anim-doze { animation: mood-doze 4s ease-in-out infinite; }
+.anim-look { animation: mood-look 6s steps(1) infinite, bob 2.4s ease-in-out infinite; }
+.anim-ready { animation: mood-ready 0.9s ease-in-out infinite; }
+.pet-target img.hop { animation: pet-hop 0.55s cubic-bezier(0.3, 0, 0.3, 1); }
+@keyframes mood-bounce {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  12% { transform: translateY(0) scale(1.06, 0.93); }
+  40% { transform: translateY(-12px) scale(0.96, 1.05); }
+  70% { transform: translateY(0) scale(1.04, 0.96); }
+}
+@keyframes mood-sway { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg) translateY(-3px); } }
+@keyframes mood-doze { 0%, 100% { transform: translateY(4px) scale(1.03, 0.95); opacity: 0.88; } 50% { transform: translateY(5px) scale(1, 0.98); opacity: 0.8; } }
+@keyframes mood-look { 0%, 45% { scale: 1 1; } 46%, 70% { scale: -1 1; } 71%, 100% { scale: 1 1; } }
+@keyframes mood-ready { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes pet-hop {
+  0% { transform: scale(1, 1); }
+  20% { transform: scale(1.12, 0.86); }
+  50% { transform: translateY(-18px) scale(0.94, 1.08); }
+  80% { transform: scale(1.06, 0.94); }
+  100% { transform: scale(1, 1); }
+}
+
+.emote {
+  position: absolute; top: -10px; right: -12px; display: grid; place-items: center;
+  min-width: 34px; height: 30px; padding: 0 7px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow);
+  animation: emote-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.4) both, emote-float 2.6s ease-in-out 0.5s infinite;
+  pointer-events: none;
+}
+.emote::after {
+  content: ""; position: absolute; left: 7px; bottom: -5px; width: 9px; height: 9px;
+  background: var(--surface); border-left: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  transform: rotate(-45deg);
+}
+.emote.pop { animation: emote-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.4) both; }
+.partner-big .emote { top: 10px; right: 4px; }
+@keyframes emote-pop { from { opacity: 0; transform: translateY(8px) scale(0.4); } }
+@keyframes emote-float { 50% { transform: translateY(-3px); } }
+.mood-sleepy .emote svg { animation: zzz 2.4s ease-in-out infinite; }
+@keyframes zzz { 50% { transform: translate(2px, -2px); opacity: 0.6; } }
+
+.mood-line {
+  margin-top: 12px; padding: 10px 14px; border-radius: var(--radius-sm); background: var(--surface-2);
+  font-family: var(--serif); font-size: 1rem; color: #3a332b;
+}
+.partner .mood-line { margin-top: 14px; }
+.friend { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 0.82rem; color: var(--muted); }
+.friend-hearts { display: inline-flex; gap: 3px; }
+.friend-hearts i { display: inline-grid; line-height: 0; }
+.friend-hearts i:not(.on) svg { fill: var(--line); }
+.friend-hearts i.on svg { animation: heart-beat 2.4s ease-in-out infinite; }
+.friend-hearts i.on:nth-child(2) svg { animation-delay: 0.12s; }
+.friend-hearts i.on:nth-child(3) svg { animation-delay: 0.24s; }
+.friend-hearts i.on:nth-child(4) svg { animation-delay: 0.36s; }
+.friend-hearts i.on:nth-child(5) svg { animation-delay: 0.48s; }
+@keyframes heart-beat { 0%, 70%, 100% { transform: scale(1); } 80% { transform: scale(1.25); } }
+
+/* evolution glow */
+.evo-from { animation: evo-glow 1.4s ease-in-out infinite; }
+@keyframes evo-glow { 50% { filter: brightness(0) invert(1) drop-shadow(0 0 10px #f3d38a); } }
+
+/* dex tiles lift a little */
+.dex-card img, .mini-grid img { transition: transform 0.18s ease; }
+.dex-card:hover img, .mini-grid a:hover img { transform: translateY(-4px); }
+
+/* ---- effects layer: never takes clicks */
+#fx { position: fixed; inset: 0; pointer-events: none; z-index: 90; }
+.fx-bit {
+  position: absolute; width: 6px; height: 6px; margin: -3px 0 0 -3px;
+  animation: fx-bit 0.85s cubic-bezier(0.1, 0.7, 0.3, 1) forwards;
+}
+@keyframes fx-bit {
+  to { transform: translate(var(--dx), var(--dy)) rotate(180deg) scale(0.4); opacity: 0; }
+}
+.fx-heart { position: absolute; margin-left: -7px; animation: fx-heart 1.3s ease-out both; }
+@keyframes fx-heart {
+  from { opacity: 0; transform: translateY(0) scale(0.6); }
+  20% { opacity: 1; transform: translateY(-10px) scale(1.1); }
+  to { opacity: 0; transform: translateY(-64px) scale(0.9); }
+}
+
+.fx-scene {
+  position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%);
+  width: min(320px, 86vw); padding: 26px 24px 22px; text-align: center;
+  background: rgba(255, 253, 249, 0.97); border: 1px solid var(--line); border-radius: 26px; box-shadow: var(--shadow-lift);
+  animation: scene-in 0.38s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+.fx-scene.out { animation: scene-out 0.3s ease-in forwards; }
+@keyframes scene-in { from { opacity: 0; transform: translate(-50%, -44%) scale(0.92); } }
+@keyframes scene-out { to { opacity: 0; transform: translate(-50%, -56%) scale(0.96); } }
+.scene-title { font-family: var(--serif); font-size: 1.9rem; font-weight: 600; margin-top: 10px; }
+.scene-sub { color: var(--muted); }
+
+/* catch: the Pokemon is drawn into the ball, the ball wobbles three times, then clicks shut */
+.catch-stage { position: relative; height: 128px; display: grid; place-items: center; }
+.catch-mon { width: 112px; height: 112px; position: absolute; animation: catch-in 0.7s ease-in forwards; }
+@keyframes catch-in {
+  0% { transform: scale(1); filter: none; }
+  45% { transform: scale(1); filter: brightness(0) invert(1); }
+  100% { transform: translateY(26px) scale(0.05); filter: brightness(0) invert(1); opacity: 0; }
+}
+.ball {
+  position: absolute; bottom: 10px; width: 46px; height: 46px; border-radius: 50%; overflow: hidden;
+  background: #fffdf9; border: 3px solid #2b2621; transform-origin: 50% 100%;
+  animation: ball-drop 0.45s 0.55s cubic-bezier(0.3, 1.4, 0.5, 1) both, ball-wobble 1.5s 1s ease-in-out both;
+}
+.ball-top { position: absolute; inset: 0 0 50% 0; background: var(--accent); }
+.ball-band { position: absolute; left: 0; right: 0; top: calc(50% - 2px); height: 4px; background: #2b2621; }
+.ball-btn {
+  position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
+  background: #fffdf9; border: 3px solid #2b2621; animation: ball-click 0.3s 2.5s ease-out both;
+}
+@keyframes ball-drop { from { opacity: 0; transform: translateY(-60px) scale(0.6); } }
+@keyframes ball-wobble {
+  0%, 30%, 60%, 100% { transform: rotate(0); }
+  10%, 40%, 70% { transform: rotate(-16deg); }
+  20%, 50%, 80% { transform: rotate(16deg); }
+}
+@keyframes ball-click { 50% { background: #f3d38a; transform: scale(1.3); } }
+.catch-stars { position: absolute; inset: 0; pointer-events: none; }
+.catch-stars svg { position: absolute; left: 50%; bottom: 30px; opacity: 0; animation: star-out 0.8s 2.55s ease-out forwards; }
+.catch-stars svg:nth-child(1) { --sx: -58px; --sy: -34px; }
+.catch-stars svg:nth-child(2) { --sx: 0px; --sy: -62px; }
+.catch-stars svg:nth-child(3) { --sx: 58px; --sy: -30px; }
+@keyframes star-out {
+  0% { opacity: 0; transform: translate(-50%, 0) scale(0.4); }
+  30% { opacity: 1; }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--sx)), var(--sy)) scale(1.1) rotate(90deg); }
+}
+.catch .scene-title, .catch .scene-sub { animation: rise 0.4s 2.6s both; }
+
+/* level up: the partner glows and rays turn behind it */
+.level-stage { position: relative; height: 128px; display: grid; place-items: center; }
+.level-mon { position: relative; z-index: 1; width: 112px; height: 112px; animation: level-glow 0.9s ease-in-out 2; }
+@keyframes level-glow { 50% { filter: brightness(1.6) drop-shadow(0 0 12px #f3d38a); transform: translateY(-8px); } }
+.level-rays {
+  position: absolute; width: 150px; height: 150px; border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, rgba(243, 211, 138, 0.55) 0 12deg, transparent 12deg 30deg);
+  -webkit-mask: radial-gradient(circle, #000 30%, transparent 70%); mask: radial-gradient(circle, #000 30%, transparent 70%);
+  animation: rays 6s linear infinite;
+}
+@keyframes rays { to { transform: rotate(360deg); } }
+
+/* app update notice (Windows app only) */
+.update-banner {
+  position: fixed; left: 50%; bottom: calc(var(--tabbar-h) + 18px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  z-index: 80; display: flex; align-items: center; gap: 12px; width: min(560px, calc(100vw - 24px));
+  padding: 12px 14px 12px 18px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line);
+  box-shadow: var(--shadow-lift); font-size: 0.9rem; animation: rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.update-banner span { flex: 1; color: var(--muted); }
+.update-banner b { color: var(--text); }
+@media (min-width: 1081px) { .update-banner { bottom: 24px; } }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }

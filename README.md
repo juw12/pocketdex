@@ -23,6 +23,18 @@ are bundled. No account, no server; your progress is saved in the browser.
 
 Navigation: Today, Pokédex, Focus, Habits and More (Meadow, Field Dex, Quiz, Team, Trainer). On phones and tablets they sit in a floating bottom tab bar; on desktop (1081 px and wider) the same tabs move into the top bar so nothing floats over the content.
 
+## PocketDex as an app
+
+**Windows:** download [PocketDex for Windows](downloads/PocketDex-Windows.zip), unzip it anywhere and open `PocketDex.exe`. It is the whole PocketDex in its own window. It works offline, keeps its own save, and has the desktop buddy built in: switch on Trainer > Desktop buddy and your partner hops onto the taskbar, no Python needed. Opening it again brings the open window to the front. The first time it opens, it adds PocketDex to the Start menu and the Desktop (delete them and they stay gone). To keep it on the taskbar, right-click its icon while it runs and choose Pin to taskbar; Windows only lets you do that yourself. When a new version is out, a small banner in the app says so and links to the download (it checks [version.json](version.json) on the site). To move your progress over from the browser, use Trainer > Export backup in the browser, then Import backup in the app.
+
+Build it yourself: `pip install pywebview pyinstaller`, then `python desktop/build_windows.py` (add `--install` to copy it to your user Programs folder with a Start menu shortcut). The app source is `desktop/pocketdex_app.py`.
+
+**Phone and tablet:** open the site and choose Add to Home screen (Android Chrome also shows an Install button under Trainer). It opens full screen with its own icon, works offline, and long-pressing the icon offers Focus, Habits and Pokedex shortcuts.
+
+## Feelings
+
+Your partner has moods that come from what you actually do: happy after a habit, proud when the day is done, sleepy late at night, and it misses you when you have been away for days. A small pixel emote shows above its head, with a line saying how it feels. Tap it to pet it: it hops, hearts float up and friendship grows (five hearts, up to ten pets a day; habits and focus sessions add to it too). Catching a Pokemon plays a short catch scene: the Pokemon is drawn into the ball, the ball wobbles three times, then clicks. Levelling up shows a glow. On the desktop the buddy reacts too: a heart when you click it, "!" when a wild Pokemon appears, a sweat drop while paused, sparkles on a catch, and it dozes with "zzz" when you have been away from the keyboard. Everything holds still when the system asks for reduced motion.
+
 ## Desktop buddy (Windows)
 
 `desktop/pocketdex_buddy.pyw` puts your partner on the Windows desktop with a transparent background, always on top:

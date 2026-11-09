@@ -1,16 +1,82 @@
 {
+  "id": "./",
   "name": "PocketDex",
   "short_name": "PocketDex",
-  "description": "A quiet Pokedex companion: 1025 Pokemon, a 3D meadow, focus sessions, habits and a photo Field Dex.",
+  "description": "A quiet Pokedex companion: 1025 Pokemon, a partner with feelings, focus battles, habits, a 3D meadow and a photo Field Dex.",
   "start_url": "./index.html#/today",
+  "scope": "./",
   "display": "standalone",
+  "display_override": [
+    "window-controls-overlay",
+    "standalone"
+  ],
+  "orientation": "any",
   "background_color": "#f6f2eb",
   "theme_color": "#f6f2eb",
+  "categories": [
+    "games",
+    "lifestyle",
+    "productivity"
+  ],
   "icons": [
     {
-      "src": "sprites/25.png",
-      "sizes": "96x96",
-      "type": "image/png"
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Start a focus session",
+      "short_name": "Focus",
+      "url": "./index.html#/focus",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Today's habits",
+      "short_name": "Habits",
+      "url": "./index.html#/habits",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Pokedex",
+      "short_name": "Pokedex",
+      "url": "./index.html#/dex",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ]
 }

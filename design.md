@@ -63,6 +63,10 @@ Banned words: supercharge, seamless, unlock, next-level, revolutionary, magic.
 
 The desktop companion follows the same system: the sprite itself is the interface, with no frame and no window chrome. The only surface is a paper-coloured bubble (#fffdf9, 1px #e3d9c8 line, 12px radius), with a Georgia time title, Segoe UI muted body and a single 4px HP bar in the accent. Copy stays calm ("Paused · Eevee is waiting", "Caught Eevee!"). It never flashes for attention, and it hides behind full-screen apps.
 
+## Feelings and motion
+
+Emotion lives in the partner, not in the chrome. Moods map to one pixel emote each (heart, note, sparkle, zzz, "!", sweat, dots), drawn as SVG bitmaps in the existing palette, never emoji. Motion is short and physical: squash and stretch hops, a 0.4s staggered page entrance that does not replay on in-page updates, and one full-screen moment at a time (catch, level up) on a paper card that never blocks clicks and leaves on its own. All of it stops under prefers-reduced-motion.
+
 ## Banned defaults
 Purple or indigo; emoji or emoji-like glyphs as icons; gradient text; glassmorphism; glow blobs;
 centred-everything hero; fake testimonials; Inter as the only face.
