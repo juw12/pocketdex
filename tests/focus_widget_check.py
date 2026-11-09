@@ -65,7 +65,7 @@ def main():
         page.evaluate("PocketDex.state().focus.start -= 61000")
         page.wait_for_timeout(900)
         check("one minute in: foe HP below 100%", page.evaluate("parseFloat(document.querySelector('#hp').style.width)") < 97)
-        check("one minute in: partner XP note shows +5 of 125", page.inner_text("#xp-note").startswith("+5 of 125"), page.inner_text("#xp-note"))
+        check("one minute in: partner XP note shows level progress and +5 this session", page.inner_text("#xp-note").endswith("+5 this session") and " XP " in page.inner_text("#xp-note"), page.inner_text("#xp-note"))
         check("one minute in: foe hit animation played", page.evaluate("document.querySelector('#foe-sprite').classList.contains('hit')"))
 
         page.goto(f"{base}#/today")

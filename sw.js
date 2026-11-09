@@ -1,5 +1,5 @@
 /* PocketDex offline cache: core files up front, sprites cached on first view. */
-const CACHE = "pocketdex-v8";
+const CACHE = "pocketdex-v9";
 const CORE = [
   "./",
   "index.html",

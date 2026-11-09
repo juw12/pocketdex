@@ -397,7 +397,7 @@
 
   function streakLabel(days) {
   if (!days) {
-    return "No streak yet";
+    return "";
   }
   return days === 1 ? "1-day streak" : `${days}-day streak`;
 }
@@ -452,7 +452,7 @@ function habitStreak(habitId) {
   function updateHeader() {
     const count = caughtCount();
     $("#hdr-caught").textContent = `${count} / ${TOTAL}`;
-    $("#hdr-bar").style.width = `${(count / TOTAL) * 100}%`;
+    $("#hdr-bar").style.width = count ? `${Math.max(3, (count / TOTAL) * 100)}%` : "0";
     $("#sound-toggle").setAttribute("aria-pressed", String(state.settings.sound));
     $("#sound-label").textContent = state.settings.sound ? "Sound on" : "Sound off";
   }
@@ -840,10 +840,10 @@ function habitStreak(habitId) {
           <div class="dialog">
             ${caughtToday
               ? `<p>${esc(encounter.n)} is registered in your Pokédex. A new Pokémon appears tomorrow.</p>`
-              : `<p>A wild <b>${esc(encounter.n.toUpperCase())}</b> appeared! Finish a focus session to catch it.</p>`}
+              : `<p>${esc(encounter.n)} is nearby today. Finish one focus session to catch it.</p>`}
           </div>
-          <div class="row">
-            ${caughtToday ? `<a class="btn" href="#/dex/${encounter.id}">View entry</a>` : `<a class="btn" href="#/focus?id=${encounter.id}">Focus to catch</a><a class="btn ghost" href="#/dex/${encounter.id}">No.${num(encounter.id)} entry</a>`}
+          <div class="row encounter-actions">
+            ${caughtToday ? `<a class="btn" href="#/dex/${encounter.id}">View entry</a>` : `<a class="btn primary" href="#/focus?id=${encounter.id}">Focus to catch</a><a class="text-link" href="#/dex/${encounter.id}">Read the No.${num(encounter.id)} entry</a>`}
           </div>
         </section>
         <section class="panel">
@@ -962,10 +962,12 @@ function habitStreak(habitId) {
       </div>
       <div class="detail-actions">
         <button class="btn ${caught ? "" : "primary"}" data-act="catch">${caught ? "Caught " + caught.d : "Mark as caught"}</button>
-        <button class="btn ghost" data-act="cry">Play cry</button>
-        <button class="btn ghost" data-act="fav" aria-pressed="${Boolean(state.fav[p.id])}">${state.fav[p.id] ? "Favourite" : "Add favourite"}</button>
-        <button class="btn ghost" data-act="team" ${!inTeam && state.team.length >= 6 ? "disabled" : ""}>${inTeam ? "In team" : "Add to team"}</button>
         ${caught ? "" : `<a class="btn ghost" href="#/focus?id=${p.id}">Focus to catch</a>`}
+        <span class="detail-tools">
+          <button class="tool-link" data-act="cry">Play cry</button>
+          <button class="tool-link" data-act="fav" aria-pressed="${Boolean(state.fav[p.id])}">${state.fav[p.id] ? "Favourite" : "Add favourite"}</button>
+          <button class="tool-link" data-act="team" ${!inTeam && state.team.length >= 6 ? "disabled" : ""}>${inTeam ? "In team" : "Add to team"}</button>
+        </span>
       </div>
       <div class="dialog entry-text"><p>${esc(p.f)}</p></div>
       <div class="detail-cols">
@@ -998,7 +1000,7 @@ function habitStreak(habitId) {
               <select id="dex-type" class="field-input" aria-label="Type"><option value="">All types</option>${typeOptions}</select>
               <select id="dex-gen" class="field-input" aria-label="Generation"><option value="">All regions</option>${genOptions}</select>
               <select id="dex-status" class="field-input" aria-label="Status">
-                <option value="">Everything</option>
+                <option value="">Caught or not</option>
                 <option value="caught" ${dexFilter.status === "caught" ? "selected" : ""}>Caught</option>
                 <option value="missing" ${dexFilter.status === "missing" ? "selected" : ""}>Not caught</option>
                 <option value="fav" ${dexFilter.status === "fav" ? "selected" : ""}>Favourites</option>
@@ -1150,7 +1152,12 @@ function habitStreak(habitId) {
   }
 
   function xpNote(info) {
-    return `+${info.earnedXp} of ${info.fullXp} XP so far`;
+    const xp = state.partner ? state.partner.xp : 0;
+    const level = levelFor(xp);
+    const lo = xpForLevel(level);
+    const hi = xpForLevel(level + 1);
+    const into = Math.min(hi - lo, xp - lo + info.earnedXp);
+    return `${into} / ${hi - lo} XP · +${info.earnedXp} this session`;
   }
 
   function battleMessage(session, info) {
@@ -1491,10 +1498,10 @@ function habitStreak(habitId) {
       ctx.fillText(`Lv ${xpView.level}`, 452, 168);
       ctx.textAlign = "left";
       ctx.fillText("HP", 242, 186);
-      drawBar(ctx, 264, 179, 188, 7, 100, "#3f7f52");
+      drawBar(ctx, 264, 179, 188, 7, 100, "#7d7468");
       ctx.fillText("XP", 242, 200);
-      drawBar(ctx, 264, 195, 188, 4, xpView.gainPct, "rgba(61, 127, 217, 0.35)");
-      drawBar(ctx, 264, 195, 188, 4, xpView.nowPct, "#3d7fd9", "rgba(0,0,0,0)");
+      drawBar(ctx, 264, 195, 188, 4, xpView.gainPct, "rgba(43, 38, 33, 0.18)");
+      drawBar(ctx, 264, 195, 188, 4, xpView.nowPct, "#2b2621", "rgba(0,0,0,0)");
     }
     ctx.fillStyle = paused ? "#6b6157" : "#26221d";
     ctx.font = "600 36px 'Iowan Old Style', 'Palatino Linotype', Georgia, serif";
@@ -1725,7 +1732,8 @@ function habitStreak(habitId) {
             <div class="combatant foe">
               <div class="status-card">
                 <p class="sc-name">${esc(foe.n)}<span>Lv ${wildLevel(foe)}</span></p>
-                <div class="hp"><span>HP</span><i><u id="hp" style="width:${info.hpPct}%"></u></i></div>
+                <div class="hp foe-hp"><span>HP</span><i><u id="hp" style="width:${info.hpPct}%"></u></i></div>
+                <p class="sc-note">Caught when its HP runs out</p>
               </div>
               <div class="pad"><img class="foe-sprite${paused ? "" : " bob"}" id="foe-sprite" src="${sprite(foe.id)}" alt="Wild ${esc(foe.n)}"></div>
             </div>
@@ -1734,14 +1742,16 @@ function habitStreak(habitId) {
           </div>
           <div class="command">
             <p class="cmd-msg" id="battle-msg">${battleMessage(session, info)}</p>
-            <p class="timer" id="timer" aria-live="off">${fmt(info.remain)}</p>
+            <div class="timer-box"><p class="timer" id="timer" aria-live="off">${fmt(info.remain)}</p><p class="timer-sub">left of ${session.minutes} min</p></div>
           </div>
-          <div class="row center">
+          <div class="row center battle-actions">
             <button class="btn primary" data-f="pause">${paused ? "Resume" : "Pause"}</button>
-            <button class="btn ghost" data-f="run">Run away</button>
-            ${canPop ? `<button class="btn ghost" data-f="popout">Pop out timer</button>` : ""}
-            ${"wakeLock" in navigator ? `<button class="btn ghost" data-f="wake" aria-pressed="${wakeLock || wantWakeLock ? "true" : "false"}">${wakeLock || wantWakeLock ? "Screen stays on" : "Keep screen on"}</button>` : ""}
+            <button class="btn ghost" data-f="run">End early</button>
           </div>
+          ${canPop || "wakeLock" in navigator ? `<div class="battle-tools">
+            ${canPop ? `<button class="tool-link" data-f="popout">Pop out timer</button>` : ""}
+            ${"wakeLock" in navigator ? `<button class="tool-link" data-f="wake" aria-pressed="${wakeLock || wantWakeLock ? "true" : "false"}">${wakeLock || wantWakeLock ? "Screen stays on" : "Keep screen on"}</button>` : ""}
+          </div>` : ""}
         </section>`;
       }
       const preset = Number(route.params.get("id"));
@@ -1804,7 +1814,7 @@ function habitStreak(habitId) {
             acquireWakeLock();
           }
         } else if (action === "run") {
-          if (confirm("Run away? The Pokémon will flee and this session will not count.")) finishFocus(false);
+          if (confirm("End early? The wild Pokémon wanders off and this session will not count.")) finishFocus(false);
         } else if (action === "random" || action === "pick") {
           const setTarget = (id) => {
             const p = BY_ID.get(id);
@@ -1888,7 +1898,9 @@ function habitStreak(habitId) {
       <div class="habits-grid">
         <section class="panel">
           <h1>Training</h1>
-          <p class="lead">Each habit you tick gives your partner ${XP.habit} XP. Each focus minute gives ${XP.focusMinute} XP.</p>
+          ${partner
+            ? `<div class="train-partner"><img src="${sprite(partner.id)}" alt="" class="tp-sprite"><div class="tp-body"><p class="tp-name">${esc(state.partner.nick || partner.n)}<span>Lv ${level}</span></p><div class="xpbar"><u style="width:${pct}%"></u></div><p class="tp-note">Each habit gives ${XP.habit} XP, each focus minute ${XP.focusMinute} XP.</p></div></div>`
+            : `<div class="train-partner is-empty"><img src="${sprite([1, 4, 7][new Date().getDate() % 3])}" alt="" class="tp-sprite tp-suggest"><div class="tp-body"><p class="tp-name">Pick a partner</p><p class="tp-note">It earns ${XP.habit} XP for every habit you tick.</p></div><button class="btn primary sm" data-p="scroll">Choose</button></div>`}
           <ul class="habit-list">${rows || `<li class="muted">No habits yet.</li>`}</ul>
           <form class="add-habit" id="add-habit">
             <input class="field-input" name="name" placeholder="New habit, for example: Stretch 5 minutes" maxlength="60" required>
@@ -1896,7 +1908,7 @@ function habitStreak(habitId) {
             <button class="btn primary" type="submit">Add habit</button>
           </form>
         </section>
-        <section class="panel">
+        <section class="panel" id="partner-panel">
           <h3>Partner Pokémon</h3>
           ${partner
             ? `<div class="partner-big lcd"><img class="sprite-xl bob" src="${sprite(partner.id)}" alt="${esc(partner.n)}"></div>
@@ -1946,6 +1958,10 @@ function habitStreak(habitId) {
         }
         const action = event.target.closest("[data-p]");
         if (!action) return;
+        if (action.dataset.p === "scroll") {
+          $("#partner-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+          return;
+        }
         if (action.dataset.p === "nick") {
           const nick = prompt("Nickname (leave empty to reset)", state.partner.nick || "");
           if (nick !== null) {
