@@ -1,19 +1,31 @@
-/* juw12 trio widget: PocketDex, Haru and Cozy Island on one iPhone home-screen widget.
+/* juw12 trio widget: PocketDex, Haru, Cozy Island and Cairn on one iPhone home-screen widget.
  *
  * Runs inside Scriptable (iOS). The small loader script (loader.js, copied from the setup page)
  * downloads this file and calls main({ code, param }), so fixes arrive without pasting again.
  * The top half is plain JavaScript and is also used by the setup page preview.
  */
-const TRIO_VERSION = "1.0.0";
+const TRIO_VERSION = "1.1.0";
 const TRIO_RELAY = "https://ntfy.sh";
-const TRIO_SETUP = "juw12.github.io/pocketdex/widget";
-const TRIO_APPS = ["pocketdex", "haru", "cozy"];
+const TRIO_SETUP = "juw12.github.io/widget";
+const TRIO_LIVE = "https://juw12.github.io/pocketdex/widget/live.html";
+const TRIO_APPS = ["pocketdex", "haru", "cozy", "cairn"];
 const TRIO_INFO = {
   pocketdex: { title: "PocketDex", accent: "#ffcb05", link: "https://juw12.github.io/pocketdex/", symbol: "sparkles" },
   haru: { title: "Haru", accent: "#ff9db0", link: "https://juw12.github.io/projects/haru/app/", symbol: "sun.max.fill" },
   cozy: { title: "Cozy Island", accent: "#8fd694", link: "https://juw12.github.io/portfolio/cozy-island/", symbol: "leaf.fill" },
+  cairn: { title: "Cairn", accent: "#9db4ff", link: "https://juw12.github.io/cairn/", symbol: "mountain.2.fill" },
 };
-const TRIO_ALIASES = { pokedex: "pocketdex", pocket: "pocketdex", dex: "pocketdex", island: "cozy", "cozy-island": "cozy", cozyisland: "cozy" };
+const TRIO_ALIASES = {
+  pokedex: "pocketdex",
+  pocket: "pocketdex",
+  dex: "pocketdex",
+  island: "cozy",
+  "cozy-island": "cozy",
+  cozyisland: "cozy",
+  vibe: "cairn",
+  sessions: "cairn",
+};
+const TRIO_STEPS = { pass: "tests passed", fail: "check failed", commit: "committed", start: "just started", prompt: "prompting", skill: "using a skill", end: "wrapping up" };
 
 // ---------------------------------------------------------------- data (no Scriptable APIs below)
 
@@ -136,6 +148,22 @@ function trioCozy(card, d, now) {
   card.lines.push(trioCount(d.sessions) + " focus · " + trioCount(d.mindfulMin) + " min calm");
 }
 
+function trioCairn(card, d, now) {
+  const today = d.day === trioDayKey(now);
+  const live = trioCount(d.live);
+  const sessions = Array.isArray(d.sessions) ? d.sessions.filter((item) => item && typeof item.t === "string") : [];
+  const shipped = today ? trioCount(d.shipped) : 0;
+  card.headline = live ? trioPlural(live, "live session", "live sessions") : "No live sessions";
+  if (live && sessions[0]) {
+    card.lines.push(sessions[0].t);
+    const step = TRIO_STEPS[sessions[0].k];
+    if (step) card.lines.push("Last step: " + step);
+  } else if (d.last && typeof d.last.t === "string" && today) {
+    card.lines.push(trioWords(String(d.last.r || "done")) + ": " + d.last.t);
+  }
+  card.lines.push(shipped ? shipped + " shipped today" : "Nothing shipped yet today");
+}
+
 /** What one app's tile says right now. `entry` is { at, d } or undefined when nothing arrived yet. */
 function trioCard(app, entry, now) {
   const info = TRIO_INFO[app];
@@ -159,14 +187,15 @@ function trioCard(app, entry, now) {
   try {
     if (app === "pocketdex") trioPocketdex(card, entry.d, now);
     else if (app === "haru") trioHaru(card, entry.d, now);
-    else trioCozy(card, entry.d, now);
+    else if (app === "cozy") trioCozy(card, entry.d, now);
+    else trioCairn(card, entry.d, now);
   } catch (error) {
     card.headline = info.title;
     card.lines = ["Could not read the last update"];
     card.timer = null;
   }
   card.headline = String(card.headline).slice(0, 40);
-  card.lines = card.lines.filter(Boolean).map((line) => String(line).slice(0, 48));
+  card.lines = card.lines.filter(Boolean).map((line) => String(line).slice(0, 60));
   return card;
 }
 
@@ -180,9 +209,11 @@ function trioPick(cards, param) {
   return cards.slice().sort((a, b) => b.updatedAt - a.updatedAt)[0];
 }
 
-/** When iOS should run the script again: just after the next timer ends, and at least every 5 minutes. */
+/** When iOS should run the script again: just after the next timer ends, every 2 minutes while
+ * something changed in the last 15 minutes, else every 5 minutes. iOS treats this as a wish. */
 function trioNextRefresh(cards, now) {
-  let next = now + 5 * 60 * 1000;
+  const busy = cards.some((card) => card.updatedAt && now - card.updatedAt < 15 * 60 * 1000);
+  let next = now + (busy ? 2 : 5) * 60 * 1000;
   cards.forEach((card) => {
     if (card.timer && card.timer.at > now) next = Math.min(next, card.timer.at + 3000);
   });
@@ -256,32 +287,54 @@ function trioTile(parent, card, images, scale) {
   return tile;
 }
 
+/** A compact tile for the medium widget's 2 x 2 grid: picture on the left, words on the right. */
+function trioCell(parent, card, images) {
+  const cell = parent.addStack();
+  cell.layoutHorizontally();
+  cell.centerAlignContent();
+  cell.setPadding(5, 6, 5, 6);
+  cell.backgroundColor = new Color("#ffffff", 0.07);
+  cell.cornerRadius = 10;
+  cell.url = card.link;
+  trioPicture(cell, card, images, 26);
+  cell.addSpacer(6);
+  const words = cell.addStack();
+  words.layoutVertically();
+  trioLabel(words, card.title.toUpperCase(), 8, new Color(card.accent), true);
+  trioLabel(words, card.headline, 11, Color.white(), true);
+  if (card.timer) trioTimerRow(words, card, 9);
+  else if (card.lines[0]) trioLabel(words, card.lines[0], 9, new Color("#ffffff", 0.75), false);
+  cell.addSpacer();
+  return cell;
+}
+
 function trioRow(parent, card, images) {
   const row = parent.addStack();
   row.layoutHorizontally();
   row.centerAlignContent();
-  row.setPadding(8, 10, 8, 10);
+  row.setPadding(6, 10, 6, 10);
   row.backgroundColor = new Color("#ffffff", 0.07);
   row.cornerRadius = 12;
   row.url = card.link;
-  trioPicture(row, card, images, 52);
+  trioPicture(row, card, images, 44);
   row.addSpacer(10);
   const words = row.addStack();
   words.layoutVertically();
   trioLabel(words, card.title.toUpperCase(), 9, new Color(card.accent), true);
-  trioLabel(words, card.headline, 15, Color.white(), true);
-  const room = card.timer ? 2 : 3;
+  trioLabel(words, card.headline, 14, Color.white(), true);
+  const room = card.timer ? 1 : 2;
   card.lines.slice(0, room).forEach((line) => trioLabel(words, line, 11, new Color("#ffffff", 0.75), false));
   if (card.timer) trioTimerRow(words, card, 11);
   row.addSpacer();
   return row;
 }
 
-function trioFooter(widget, cards, note) {
+function trioFooter(widget, cards, note, liveUrl) {
   const newest = Math.max.apply(null, cards.map((card) => card.updatedAt));
   const row = widget.addStack();
   row.layoutHorizontally();
   row.centerAlignContent();
+  if (liveUrl) row.url = liveUrl;
   const grey = new Color("#ffffff", 0.5);
   if (note) {
     trioLabel(row, note, 8, grey, false);
@@ -297,6 +350,12 @@ function trioFooter(widget, cards, note) {
     trioLabel(row, "set up at " + TRIO_SETUP, 8, grey, false);
   }
   row.addSpacer();
+  if (liveUrl) trioLabel(row, "LIVE ›", 8, new Color("#7cf29c"), true);
+}
+
+/** The live view: the same tiles in a page that updates the moment an app sends. */
+function trioLiveUrl(code) {
+  return /^jw-[0-9a-f]{32}$/.test(code) ? TRIO_LIVE + "#" + code : "";
 }
 
 function trioLockScreen(widget, card, family) {
@@ -332,7 +391,7 @@ function trioLockScreen(widget, card, family) {
   }
 }
 
-function trioBuild(cards, family, param, images, note) {
+function trioBuild(cards, family, param, images, note, liveUrl) {
   const widget = new ListWidget();
   if (String(family).indexOf("accessory") === 0) {
     const card = trioPick(cards, param);
@@ -358,15 +417,20 @@ function trioBuild(cards, family, param, images, note) {
     });
     widget.addSpacer();
   } else {
-    const strip = widget.addStack();
-    strip.layoutHorizontally();
-    cards.forEach((card, index) => {
-      if (index) strip.addSpacer(6);
-      trioTile(strip, card, images, 1);
-    });
+    for (let start = 0; start < cards.length; start += 2) {
+      if (start) widget.addSpacer(5);
+      const line = widget.addStack();
+      line.layoutHorizontally();
+      cards.slice(start, start + 2).forEach((card, index) => {
+        if (index) line.addSpacer(5);
+        trioCell(line, card, images);
+      });
+    }
+    widget.addSpacer();
   }
+  if (liveUrl && family !== "small") widget.url = liveUrl;
   widget.addSpacer(4);
-  trioFooter(widget, cards, note);
+  trioFooter(widget, cards, note, family === "small" ? "" : liveUrl);
   return widget;
 }
 
@@ -435,11 +499,17 @@ async function main(ctx) {
   const now = Date.now();
   const cards = TRIO_APPS.map((app) => trioCard(app, state[app], now));
   const images = await trioImages(cards, files, folder);
-  const widget = trioBuild(cards, family, param, images, note);
+  const liveUrl = trioLiveUrl(code);
+  const widget = trioBuild(cards, family, param, images, note, liveUrl);
   widget.refreshAfterDate = new Date(trioNextRefresh(cards, now));
 
   if (config.runsInWidget || config.runsInAccessoryWidget) {
     Script.setWidget(widget);
+  } else if (!options.quiet && liveUrl && typeof WebView !== "undefined") {
+    // Run inside Scriptable (or tapped from the widget): the live view, updated the moment an app sends.
+    const view = new WebView();
+    await view.loadURL(liveUrl);
+    await view.present(true);
   } else if (!options.quiet) {
     await widget.presentMedium();
   }
@@ -448,5 +518,5 @@ async function main(ctx) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { TRIO_VERSION, TRIO_APPS, trioParseFeed, trioMerge, trioCard, trioPick, trioNextRefresh, trioBuild, main };
+  module.exports = { TRIO_VERSION, TRIO_APPS, TRIO_INFO, trioParseFeed, trioMerge, trioCard, trioPick, trioNextRefresh, trioLiveUrl, trioBuild, main };
 }

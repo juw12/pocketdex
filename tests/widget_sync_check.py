@@ -176,6 +176,7 @@ def main():
             {"v": 1, "app": "pocketdex", "at": now - 60000, "d": {"day": today, "trainer": "Juwen", "partner": {"id": 25, "name": "Sparky", "level": 12, "mood": "happy"}, "caught": 5, "total": 1025, "habits": {"done": 1, "total": 2}, "streak": 3, "focusMin": 25, "focus": {"id": 143, "name": "Snorlax", "minutes": 25, "endsAt": now + 600000, "paused": False}}},
             {"v": 1, "app": "haru", "at": now - 120000, "d": {"day": today, "scene": "clear__dusk__autumn", "weather": "clear", "tempC": 21, "time": "dusk", "season": "autumn", "moments": 2, "days": 14, "walkKm": 3.2, "inbox": 0, "sample": False}},
             {"v": 1, "app": "cozy", "at": now - 30000, "d": {"name": "Juwen", "season": "autumn", "rain": False, "fish": 4, "harvest": 9, "sessions": 6, "mindfulMin": 12, "garden": [{"s": "tulip", "b": now + 300000}], "focus": None}},
+            {"v": 1, "app": "cairn", "at": now - 20000, "d": {"day": today, "live": 1, "sessions": [{"t": "Widget Cairn tile", "k": "test", "at": now - 20000, "since": now - 600000}], "shipped": 2, "ended": 3, "last": None}},
         ]
         feed = "\n".join(json.dumps({"event": "message", "message": json.dumps(message)}) for message in messages) + "\n"
         relay_log = []
@@ -193,11 +194,12 @@ def main():
         check(page.evaluate("localStorage.getItem('juw12.widget.code')") is None, "setup: a new code is not paired until asked")
         page.click("#pair")
         check(page.evaluate("localStorage.getItem('juw12.widget.code')") == made, "setup: Pair this browser stores the code")
-        page.wait_for_function("document.querySelectorAll('#cards .card').length === 3 && document.querySelector('#cards .age')", timeout=10000)
+        page.wait_for_function("document.querySelectorAll('#cards .card').length === 4 && document.querySelector('#cards .age')", timeout=10000)
         cards = page.evaluate("[...document.querySelectorAll('#cards .card')].map((card) => card.innerText)")
         check("Sparky Lv 12" in cards[0] and "vs Snorlax" in cards[0], "setup preview: PocketDex card shows partner and battle")
         check("Clear 21" in cards[1] and "2 moments today" in cards[1], "setup preview: Haru card shows weather and moments")
         check("Juwen's island" in cards[2] and "Tulip blooms" in cards[2], "setup preview: Cozy Island card shows the garden timer")
+        check("1 live session" in cards[3] and "Widget Cairn tile" in cards[3] and "2 shipped today" in cards[3], "setup preview: Cairn card shows the live session and shipped count")
         check(any(entry["method"] == "GET" and entry["url"].startswith(f"https://ntfy.sh/{made}/json?poll=1") for entry in relay_log), "setup preview reads the code's own topic")
         first_clock = page.inner_text("#cards .card .timer")
         page.wait_for_timeout(2200)
