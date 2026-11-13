@@ -1,5 +1,5 @@
 /* PocketDex offline cache: core files up front, sprites cached on first view. */
-const CACHE = "pocketdex-v12";
+const CACHE = "pocketdex-v13";
 const CORE = [
   "./",
   "index.html",
@@ -7,6 +7,7 @@ const CORE = [
   "app.js",
   "meadow.js",
   "data.js",
+  "widget/sync.js",
   "vendor/three.min.js",
   "fonts/fonts.css",
   "fonts/silkscreen-400.woff2",
@@ -29,6 +30,10 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  // The widget setup page and the widget script itself always come from the network, so an iPhone
+  // never runs a stale copy. Only widget/sync.js is part of the offline app.
+  const path = new URL(event.request.url).pathname;
+  if (path.includes("/widget/") && !path.endsWith("/widget/sync.js")) return;
   event.respondWith(
     caches.match(event.request).then((hit) => {
       if (hit) return hit;
