@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>iPhone widget for PocketDex, Haru and Cozy Island</title>
+  <meta name="description" content="One iPhone home-screen widget that shows PocketDex, Haru and Cozy Island together and follows them as you use them.">
+  <meta name="theme-color" content="#f6f2eb">
+  <link rel="icon" href="../icons/icon-192.png">
+  <style>
+    :root {
+      --bg: #f6f2eb;
+      --surface: #ffffff;
+      --line: #e6dfd3;
+      --text: #26221d;
+      --muted: #6b6157;
+      --accent: #c0432f;
+      --ok: #3f7f52;
+      --sans: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+      --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      --mono: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    [hidden] { display: none !important; }
+    body { background: var(--bg); color: var(--text); font: 400 16px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+    main { max-width: 760px; margin: 0 auto; padding: 40px 20px calc(64px + env(safe-area-inset-bottom)); }
+    h1, h2 { font-family: var(--serif); font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; }
+    h1 { font-size: 2rem; }
+    h2 { font-size: 1.3rem; margin-bottom: 8px; }
+    p { margin-top: 10px; }
+    a { color: inherit; text-underline-offset: 3px; }
+    .lede { color: var(--muted); max-width: 60ch; }
+    .back { display: inline-block; margin-bottom: 20px; color: var(--muted); font-size: 0.9rem; }
+    section { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 22px; margin-top: 18px; }
+    .step { font-size: 0.8rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+    .muted { color: var(--muted); }
+    .small { font-size: 0.9rem; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; align-items: center; }
+    input[type=text] {
+      flex: 1 1 260px; min-width: 0; min-height: 44px; padding: 10px 14px; font: 0.95rem var(--mono); color: inherit;
+      background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
+    }
+    input[type=text]:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid rgba(192, 67, 47, 0.35); outline-offset: 2px; }
+    button, .btn {
+      display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px 16px; font: 600 0.95rem var(--sans);
+      color: #fff; background: var(--text); border: 1px solid var(--text); border-radius: 12px; cursor: pointer; text-decoration: none;
+    }
+    button.ghost, .btn.ghost { color: var(--text); background: transparent; border-color: var(--line); }
+    button:disabled { opacity: 0.45; cursor: default; }
+    .status { margin-top: 10px; font-size: 0.9rem; color: var(--muted); min-height: 1.4em; }
+    .status.ok { color: var(--ok); }
+    ol { margin: 10px 0 0 22px; }
+    ol li { margin-top: 6px; }
+    code { font: 0.9em var(--mono); background: var(--bg); padding: 1px 6px; border-radius: 6px; }
+    .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+    .card { background: #1f2a24; color: #f4f1ea; border-radius: 16px; padding: 12px; min-height: 150px; display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+    .card .app { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+    .card img { width: 44px; height: 44px; object-fit: cover; border-radius: 8px; margin: 4px 0; }
+    .card img.pixel { image-rendering: pixelated; object-fit: contain; }
+    .card img.wide { width: 100%; height: 48px; }
+    .card .headline { font-weight: 600; line-height: 1.25; }
+    .card .line { font-size: 0.8rem; opacity: 0.8; line-height: 1.35; }
+    .card .timer { font: 600 1.15rem var(--mono); margin-top: 2px; }
+    .card .age { font-size: 0.72rem; opacity: 0.6; margin-top: auto; padding-top: 6px; }
+    textarea { width: 100%; min-height: 150px; margin-top: 12px; padding: 12px; font: 0.8rem/1.5 var(--mono); color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; resize: vertical; }
+    ul.plain { list-style: none; margin-top: 10px; }
+    ul.plain li { padding: 8px 0; border-top: 1px solid var(--line); }
+    ul.plain li:first-child { border-top: 0; }
+    @media (max-width: 620px) {
+      h1 { font-size: 1.65rem; }
+      .cards { grid-template-columns: 1fr; }
+      .card { min-height: 0; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <a class="back" href="../">&larr; PocketDex</a>
+  <h1>One iPhone widget for PocketDex, Haru and Cozy Island</h1>
+  <p class="lede">Your partner and habits, today's Haru scene and your island garden, side by side on the home screen. Focus timers count down live. Everything else follows a few minutes after you use an app.</p>
+
+  <section aria-labelledby="h-code">
+    <p class="step">Step 1</p>
+    <h2 id="h-code">Make your widget code</h2>
+    <p class="muted small">The code is a private address that links your apps to your widget. Keep it to yourself: anyone who has it can read the summary your apps send.</p>
+    <div class="row">
+      <input type="text" id="code" placeholder="jw-..." autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Widget code">
+      <button type="button" id="new-code" class="ghost">New code</button>
+      <button type="button" id="pair">Pair this browser</button>
+    </div>
+    <p class="status" id="pair-status" role="status"></p>
+    <p class="row"><button type="button" id="unpair" class="ghost" hidden>Unpair this browser</button></p>
+  </section>
+
+  <section aria-labelledby="h-apps">
+    <p class="step">Step 2</p>
+    <h2 id="h-apps">Link the apps</h2>
+    <p class="muted small">Pairing this browser already covers the three web apps opened in it. Open each one once so it sends its first update. For another device, or an app you added to the home screen, open it with the link below or paste the code in its settings.</p>
+    <ul class="plain" id="app-links">
+      <li><a data-app-link="https://juw12.github.io/pocketdex/" href="https://juw12.github.io/pocketdex/">Open PocketDex</a> <span class="muted small">(code field: More, Trainer, iPhone widget)</span></li>
+      <li><a data-app-link="https://juw12.github.io/projects/haru/app/" href="https://juw12.github.io/projects/haru/app/">Open Haru</a> <span class="muted small">(code field: Settings, iPhone widget)</span></li>
+      <li><a data-app-link="https://juw12.github.io/portfolio/cozy-island/" href="https://juw12.github.io/portfolio/cozy-island/">Open Cozy Island</a> <span class="muted small">(pairs through the link)</span></li>
+    </ul>
+    <div class="row">
+      <button type="button" id="copy-links" class="ghost" disabled>Copy the three links</button>
+    </div>
+    <p class="status" id="links-status" role="status"></p>
+  </section>
+
+  <section aria-labelledby="h-iphone">
+    <p class="step">Step 3</p>
+    <h2 id="h-iphone">Add the widget on the iPhone</h2>
+    <ol>
+      <li>Install <a href="https://apps.apple.com/app/scriptable/id1405459188" rel="noopener">Scriptable</a> from the App Store. It is free.</li>
+      <li>Open this page on the iPhone, enter the same code above, then tap <b>Copy widget script</b>.</li>
+      <li>In Scriptable tap <b>+</b>, paste, and name the script <code>Trio</code>. Run it once to see a preview.</li>
+      <li>Hold an empty spot on the home screen, tap <b>Edit</b> then <b>Add Widget</b>, choose Scriptable and a size.</li>
+      <li>Hold the new widget, tap <b>Edit Widget</b> and set Script to <code>Trio</code>.</li>
+    </ol>
+    <div class="row">
+      <button type="button" id="copy-script" disabled>Copy widget script</button>
+      <button type="button" id="show-script" class="ghost" disabled>Show the script</button>
+    </div>
+    <p class="status" id="script-status" role="status"></p>
+    <textarea id="script-text" readonly hidden aria-label="Widget script"></textarea>
+    <p class="muted small">Sizes: medium shows all three as tiles, large shows three rows with more detail. Small shows one app: type <code>pocketdex</code>, <code>haru</code> or <code>cozy</code> in the widget's Parameter field, or leave it empty to show whichever has a timer running. Lock-screen sizes work too.</p>
+  </section>
+
+  <section aria-labelledby="h-preview">
+    <h2 id="h-preview">What the widget shows right now</h2>
+    <p class="muted small" id="preview-note">Enter a code to see what has been sent.</p>
+    <div class="cards" id="cards" aria-live="polite"></div>
+  </section>
+
+  <section aria-labelledby="h-facts">
+    <h2 id="h-facts">Good to know</h2>
+    <ul class="plain">
+      <li><b>How live it is.</b> Countdown timers tick every second on the widget. Other changes reach the relay within seconds to five minutes, and iOS decides when a widget redraws, usually every 5 to 15 minutes.</li>
+      <li><b>What is sent.</b> Names, counts and timer end times only: partner and level, Pokédex and habit counts, the Haru weather scene and day counts, island season, garden bloom times and totals. No diary text, photos or place names.</li>
+      <li><b>Where it goes.</b> Through <a href="https://ntfy.sh" rel="noopener">ntfy.sh</a>, a free public relay that keeps a message for about 12 hours. The widget keeps the last update it saw, so it does not go blank after that.</li>
+      <li><b>Turning it off.</b> Unpair here or clear the code in an app and nothing more is sent from that browser. Make a new code if the old one was shared by mistake.</li>
+    </ul>
+  </section>
+</main>
+
+<script src="sync.js"></script>
+<script src="trio.js"></script>
+<script>
+(function () {
+  "use strict";
+  const relay = window.Juw12Widget;
+  const input = document.getElementById("code");
+  const pairStatus = document.getElementById("pair-status");
+  const unpairButton = document.getElementById("unpair");
+  const cards = document.getElementById("cards");
+  const previewNote = document.getElementById("preview-note");
+  const scriptText = document.getElementById("script-text");
+  const scriptStatus = document.getElementById("script-status");
+  const linksStatus = document.getElementById("links-status");
+  let loaderTemplate = null;
+  let pollTimer = null;
+  let lastFeed = {};
+
+  const currentCode = () => {
+    const value = input.value.trim().toLowerCase();
+    return relay.isCode(value) ? value : "";
+  };
+
+  function setStatus(element, text, ok) {
+    element.textContent = text;
+    element.classList.toggle("ok", Boolean(ok));
+  }
+
+  function copyText(text, statusElement, doneText) {
+    const fallback = () => {
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      let copied = false;
+      try {
+        copied = document.execCommand("copy");
+      } catch (error) {
+        copied = false;
+      }
+      area.remove();
+      setStatus(statusElement, copied ? doneText : "Could not copy. Use Show the script and copy it by hand.", copied);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => setStatus(statusElement, doneText, true)).catch(fallback);
+    } else {
+      fallback();
+    }
+  }
+
+  function appLinks(code) {
+    return Array.from(document.querySelectorAll("[data-app-link]")).map((link) => {
+      const base = link.getAttribute("data-app-link");
+      const href = code ? base + "?widget=" + code : base;
+      link.href = href;
+      return href;
+    });
+  }
+
+  function loaderScript(code) {
+    return loaderTemplate ? loaderTemplate.replace("__CODE__", code) : "";
+  }
+
+  function relativeAge(at, now) {
+    const minutes = Math.max(0, Math.round((now - at) / 60000));
+    if (minutes < 1) return "updated just now";
+    if (minutes < 60) return "updated " + minutes + " min ago";
+    const hours = Math.round(minutes / 60);
+    return "updated " + hours + (hours === 1 ? " hour ago" : " hours ago");
+  }
+
+  function drawCards() {
+    const now = Date.now();
+    cards.textContent = "";
+    TRIO_APPS.forEach((app) => {
+      const card = trioCard(app, lastFeed[app], now);
+      const box = document.createElement("div");
+      box.className = "card";
+      box.dataset.app = app;
+      const title = document.createElement("div");
+      title.className = "app";
+      title.style.color = card.accent;
+      title.textContent = card.title;
+      box.appendChild(title);
+      if (card.image) {
+        const picture = document.createElement("img");
+        picture.alt = "";
+        picture.src = card.image.url;
+        picture.className = card.image.wide ? "wide" : "pixel";
+        picture.addEventListener("error", () => picture.remove());
+        box.appendChild(picture);
+      }
+      const headline = document.createElement("div");
+      headline.className = "headline";
+      headline.textContent = card.headline;
+      box.appendChild(headline);
+      if (card.timer) {
+        const timer = document.createElement("div");
+        timer.className = "timer";
+        timer.dataset.endsAt = String(card.timer.at);
+        timer.textContent = trioClock(card.timer.at - now);
+        box.appendChild(timer);
+        const label = document.createElement("div");
+        label.className = "line";
+        label.textContent = card.timer.label;
+        box.appendChild(label);
+      }
+      card.lines.forEach((text) => {
+        const line = document.createElement("div");
+        line.className = "line";
+        line.textContent = text;
+        box.appendChild(line);
+      });
+      if (!card.empty) {
+        const age = document.createElement("div");
+        age.className = "age";
+        age.textContent = relativeAge(card.updatedAt, now);
+        box.appendChild(age);
+      }
+      cards.appendChild(box);
+    });
+  }
+
+  function poll() {
+    const code = currentCode();
+    if (!code) return;
+    fetch(relay.RELAY + "/" + code + "/json?poll=1&since=12h", { cache: "no-store", credentials: "omit" })
+      .then((response) => (response.ok ? response.text() : Promise.reject(new Error("relay " + response.status))))
+      .then((text) => {
+        if (code !== currentCode()) return;
+        lastFeed = trioMerge(lastFeed, trioParseFeed(text));
+        const count = Object.keys(lastFeed).length;
+        previewNote.textContent = count
+          ? count + " of 3 apps have sent an update. This checks again every 20 seconds."
+          : "Nothing has arrived yet. Pair, then open an app and use it for a moment.";
+        drawCards();
+      })
+      .catch(() => {
+        previewNote.textContent = "Could not reach the relay just now. It will try again.";
+      });
+  }
+
+  function refresh() {
+    const code = currentCode();
+    const paired = relay.code();
+    document.getElementById("copy-script").disabled = !code || !loaderTemplate;
+    document.getElementById("show-script").disabled = !code || !loaderTemplate;
+    document.getElementById("copy-links").disabled = !code;
+    document.getElementById("pair").disabled = !code || code === paired;
+    unpairButton.hidden = !paired;
+    appLinks(code);
+    if (!scriptText.hidden) scriptText.value = code ? loaderScript(code) : "";
+    if (paired && code === paired) setStatus(pairStatus, "This browser is paired. Open the apps and they will start sending updates.", true);
+    else if (paired && code) setStatus(pairStatus, "This browser is paired with a different code. Pair to switch to this one.");
+    else if (input.value.trim() && !code) setStatus(pairStatus, "A code looks like jw- followed by 32 letters and numbers.");
+    else if (code) setStatus(pairStatus, "Not paired yet in this browser.");
+    else setStatus(pairStatus, "");
+    window.clearInterval(pollTimer);
+    lastFeed = {};
+    if (code) {
+      previewNote.textContent = "Checking the relay...";
+      drawCards();
+      poll();
+      pollTimer = window.setInterval(poll, 20000);
+    } else {
+      cards.textContent = "";
+      previewNote.textContent = "Enter a code to see what has been sent.";
+    }
+  }
+
+  document.getElementById("new-code").addEventListener("click", () => {
+    if (relay.code() && !window.confirm("Make a new code? The widget and the apps will need the new one.")) return;
+    input.value = relay.newCode();
+    refresh();
+  });
+  document.getElementById("pair").addEventListener("click", () => {
+    const code = currentCode();
+    if (!code) return;
+    relay.setCode(code);
+    refresh();
+  });
+  unpairButton.addEventListener("click", () => {
+    relay.setCode("");
+    refresh();
+  });
+  document.getElementById("copy-links").addEventListener("click", () => {
+    copyText(appLinks(currentCode()).join("\n"), linksStatus, "Links copied. Send them to the other device and open each one once.");
+  });
+  document.getElementById("copy-script").addEventListener("click", () => {
+    copyText(loaderScript(currentCode()), scriptStatus, "Script copied. Paste it into a new script in Scriptable.");
+  });
+  document.getElementById("show-script").addEventListener("click", () => {
+    scriptText.hidden = !scriptText.hidden;
+    scriptText.value = scriptText.hidden ? "" : loaderScript(currentCode());
+  });
+  input.addEventListener("input", refresh);
+
+  window.setInterval(() => {
+    const now = Date.now();
+    let ended = false;
+    document.querySelectorAll(".timer[data-ends-at]").forEach((timer) => {
+      const left = Number(timer.dataset.endsAt) - now;
+      timer.textContent = trioClock(left);
+      if (left <= 0) ended = true;
+    });
+    if (ended) drawCards();
+  }, 1000);
+
+  fetch("loader.js", { cache: "no-store" })
+    .then((response) => (response.ok ? response.text() : Promise.reject(new Error("loader"))))
+    .then((text) => {
+      loaderTemplate = text;
+      refresh();
+    })
+    .catch(() => setStatus(scriptStatus, "Could not load the widget script. Reload the page."));
+
+  input.value = relay.code();
+  refresh();
+})();
+</script>
+</body>
+</html>

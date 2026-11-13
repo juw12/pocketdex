@@ -51,11 +51,22 @@ Run it: install Python 3 from python.org (tkinter is included), then double-clic
 
 Privacy: the buddy listens on `127.0.0.1:47615` only, accepts state from the PocketDex page alone, and sends nothing anywhere. The browser may ask once to allow access to apps on this device. Allow it so the page can reach the buddy.
 
+## iPhone widget (with Haru and Cozy Island)
+
+One home-screen widget shows PocketDex, [Haru](https://juw12.github.io/projects/haru/app/) and [Cozy Island](https://juw12.github.io/portfolio/cozy-island/) side by side: your partner, level and mood, today's habits and streak, the Haru scene and day counts, the island season and garden. A running focus battle or focus session counts down live on the widget.
+
+Set it up at [juw12.github.io/pocketdex/widget/](https://juw12.github.io/pocketdex/widget/): make a widget code, pair the browser, then paste the widget script into the free Scriptable app on the iPhone and add a Scriptable widget (medium or large for all three; small or lock-screen for one app). In PocketDex the code field is under **Trainer > iPhone widget**.
+
+How it works: while a code is saved, each app posts a small summary (names, counts and timer end times; no diary text, photos or place names) to `https://ntfy.sh/<code>`, a free public relay, and the widget reads the newest one per app. Nothing is sent without a code. Anyone who has the code can read those summaries, so keep it private; unpairing stops the updates. Timers tick every second; other changes show when iOS next redraws the widget, usually within 5 to 15 minutes.
+
+Not covered yet: the Windows download above was not rebuilt, so it has no widget feed until the next build.
+
 ## Files
 - `index.html`, `styles.css`, `app.js` - the app (vanilla JS, no build step). `meadow.js` - the 3D Meadow.
 - `vendor/three.min.js` - three.js r160 (MIT). `vendor/sprites-data.js` - sprite bundle used only when the app is opened from disk, so WebGL can read the sprites.
 - `data.js` - generated from the PokeAPI CSV data by `../build/build_data.py`.
 - `sprites/` - 1025 front sprites from the PokeAPI sprites repo. `fonts/` - Silkscreen (OFL), used for Dex numbers.
+- `widget/` - iPhone widget: `sync.js` (shared sender, also loaded by Haru and Cozy Island), `trio.js` (the Scriptable widget), `loader.js`, `index.html` (setup page). Checks: `tests/widget_sync_check.py`, `tests/widget_trio_check.js`.
 - `design.md` - design system (palette, type, rules). `tests/e2e.py` - Playwright end-to-end checks.
 
 Pokémon and all related names are trademarks of Nintendo, Game Freak and Creatures. This is an unofficial,

@@ -85,6 +85,7 @@
       toast("Storage is full. Export a backup from the Trainer page.");
     }
     buddySync();
+    widgetSync();
   }
 
   // ---------------------------------------------------------------- desktop buddy (Windows companion app)
@@ -143,6 +144,51 @@
         buddyLinked = false;
         return false;
       });
+  }
+
+  // ---------------------------------------------------------------- iPhone widget (optional)
+  // When a widget code is paired on the Trainer page, a small status snapshot (partner, counts, the focus
+  // battle end time) goes through widget/sync.js to the home-screen widget. Nothing is sent while unpaired.
+  let widgetFocusKey = "";
+
+  function widgetSnapshot() {
+    const key = todayKey();
+    const partner = state.partner ? BY_ID.get(state.partner.id) : null;
+    const mood = partner ? partnerMood() : null;
+    const session = state.focus;
+    const foe = session ? BY_ID.get(session.id) : null;
+    const log = state.habitLog[key] || {};
+    let focus = null;
+    if (foe && session.pausedAt) {
+      focus = { id: foe.id, name: foe.n, minutes: session.minutes, remainMs: Math.round(focusRemaining(session)), paused: true };
+    } else if (foe) {
+      focus = { id: foe.id, name: foe.n, minutes: session.minutes, endsAt: session.start + session.minutes * 60000 + session.pausedTotal, paused: false };
+    }
+    return {
+      day: key,
+      trainer: state.trainer,
+      partner: partner ? { id: partner.id, name: partnerName(), level: levelFor(state.partner.xp), mood: mood ? mood.id : "" } : null,
+      caught: caughtCount(),
+      total: TOTAL,
+      habits: { done: state.habits.filter((habit) => log[habit.id]).length, total: state.habits.length },
+      streak: streakFrom(activeDays()),
+      focusMin: focusMinutesOn(key),
+      focus,
+    };
+  }
+
+  function widgetSync() {
+    try {
+      const relay = window.Juw12Widget;
+      if (!relay || !relay.code()) return;
+      const session = state.focus;
+      const focusKey = session ? `${session.id}:${session.start}:${session.pausedAt || 0}` : "";
+      const urgent = focusKey !== widgetFocusKey; // a battle started, paused, resumed or ended
+      widgetFocusKey = focusKey;
+      relay.publish("pocketdex", widgetSnapshot(), { urgent });
+    } catch (error) {
+      /* the widget is optional: never let it break a save */
+    }
   }
 
   // ---------------------------------------------------------------- helpers
@@ -2809,6 +2855,13 @@ function habitStreak(habitId) {
                <p id="install-slot" ${installPrompt ? "" : "hidden"}><button class="btn sm" type="button" data-tr="install">Install PocketDex</button></p>`}
           <label class="check"><input type="checkbox" id="set-buddy" ${state.settings.buddy ? "checked" : ""}><span>Desktop buddy for Windows</span></label>
           <p class="muted small buddy-help">Your partner walks on the taskbar and on your windows, and focus battles play out beside it. <a href="desktop/pocketdex_buddy.pyw" download>Get the buddy app</a> (needs Python 3), run it, then switch this on. <span id="buddy-status" aria-live="polite"></span></p>
+          <h3 class="mt">iPhone widget</h3>
+          <p class="muted small">Show your partner, today's habits and the focus battle countdown on the iPhone home screen, next to Haru and Cozy Island. <a href="widget/">Set up the widget</a>, then paste its code here. While a code is saved, a small status summary is sent through the ntfy.sh relay. <span id="widget-status" aria-live="polite"></span></p>
+          <div class="row">
+            <input type="text" id="widget-code" class="field-input widget-code" placeholder="jw-..." autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Widget code">
+            <button class="btn sm" type="button" data-tr="widget-save">Save code</button>
+            <button class="btn ghost sm" type="button" data-tr="widget-clear">Unpair</button>
+          </div>
           <p class="muted">Everything is saved in this browser only. Export a backup to move it to another device.</p>
           <div class="row">
             <button class="btn" data-tr="export">Export backup</button>
@@ -2854,6 +2907,32 @@ function habitStreak(habitId) {
         }
       });
       showBuddyStatus();
+      const widgetInput = $("#widget-code", view);
+      const widgetStatus = $("#widget-status", view);
+      const showWidgetStatus = (note) => {
+        const relay = window.Juw12Widget;
+        const paired = Boolean(relay && relay.code());
+        if (paired && document.activeElement !== widgetInput) widgetInput.value = relay.code();
+        $("[data-tr=widget-clear]", view).hidden = !paired;
+        widgetStatus.textContent = note || (!relay ? "Not available in this copy of PocketDex." : paired ? "Paired on this device." : "Not paired.");
+      };
+      $("[data-tr=widget-save]", view).addEventListener("click", () => {
+        const relay = window.Juw12Widget;
+        if (!relay) return;
+        if (!widgetInput.value.trim() || !relay.setCode(widgetInput.value)) {
+          showWidgetStatus("That is not a widget code. Copy it from the setup page.");
+          return;
+        }
+        widgetInput.blur();
+        showWidgetStatus();
+        widgetSync();
+      });
+      $("[data-tr=widget-clear]", view).addEventListener("click", () => {
+        if (window.Juw12Widget) window.Juw12Widget.setCode("");
+        widgetInput.value = "";
+        showWidgetStatus();
+      });
+      showWidgetStatus();
       $("#import-file", view).addEventListener("change", (event) => {
         const file = event.target.files[0];
         if (!file) return;
@@ -2969,6 +3048,7 @@ function habitStreak(habitId) {
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && state.focus && focusRemaining(state.focus) <= 0 && !state.focus.pausedAt) finishFocus(true);
     buddySync();
+    if (!document.hidden) widgetSync();
   });
   // keep a buddy that was started later (or restarted) in step with this tab
   setInterval(() => {
@@ -3009,9 +3089,16 @@ function habitStreak(habitId) {
   });
 
   // Expose a tiny hook for automated checks.
-  window.PocketDex = { state: () => state, encounterFor, defenseProfile, levelFor, pixelate, TOTAL, mini: () => mini, buddyPayload, partnerMood, friendship, showUpdateBanner };
+  window.PocketDex = { state: () => state, encounterFor, defenseProfile, levelFor, pixelate, TOTAL, mini: () => mini, buddyPayload, partnerMood, friendship, showUpdateBanner, widgetSnapshot };
+
+  // a code paired later (setup page link, another tab) starts the widget feed straight away
+  window.addEventListener("juw12-widget-code", widgetSync);
+  window.addEventListener("storage", (event) => {
+    if (event.key === "juw12.widget.code") widgetSync();
+  });
 
   checkBadges();
   render();
   buddySync();
+  widgetSync();
 })();
