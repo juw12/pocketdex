@@ -4,7 +4,7 @@
  * downloads this file and calls main({ code, param }), so fixes arrive without pasting again.
  * The top half is plain JavaScript and is also used by the setup page preview.
  */
-const TRIO_VERSION = "1.3.0";
+const TRIO_VERSION = "1.4.0";
 const TRIO_RELAY = "https://ntfy.sh";
 const TRIO_SETUP = "juw12.github.io/widget";
 const TRIO_LIVE = "https://juw12.github.io/pocketdex/widget/live.html";
@@ -117,8 +117,21 @@ function trioPocketdex(card, d, now) {
   if (focus && focus.paused) {
     card.lines.push("Paused · " + trioClock(trioCount(focus.remainMs)) + " left");
   } else if (focus && Number.isFinite(focus.endsAt)) {
-    if (focus.endsAt > now) card.timer = { at: focus.endsAt, label: "vs " + (focus.name || "wild") };
-    else card.lines.push("Battle over · open to finish");
+    if (focus.endsAt > now) {
+      card.timer = { at: focus.endsAt, label: "vs " + (focus.name || "wild") };
+      const minutes = trioCount(focus.minutes);
+      card.battle = {
+        foe: String(focus.name || "wild").slice(0, 20),
+        partner: partner ? String(partner.name).slice(0, 20) : "",
+        startAt: minutes ? focus.endsAt - minutes * 60000 : now,
+        endsAt: focus.endsAt,
+      };
+      if (trioCount(focus.id)) {
+        card.foeImage = { url: "https://juw12.github.io/pocketdex/sprites/" + trioCount(focus.id) + ".png", key: "pd-" + trioCount(focus.id) };
+      }
+    } else {
+      card.lines.push("Battle over · open to finish");
+    }
   } else {
     card.lines.push((today ? trioCount(d.focusMin) : 0) + " min focus today");
   }
@@ -181,6 +194,13 @@ function trioCairn(card, d, now) {
   card.lines.push(shipped ? shipped + " shipped today" : "Nothing shipped yet today");
 }
 
+/** Share of the wild Pokémon's HP left: full when the focus battle starts, empty when it ends. */
+function trioFoeHp(battle, now) {
+  const length = battle.endsAt - battle.startAt;
+  if (!(length > 0)) return 1;
+  return Math.min(1, Math.max(0, (battle.endsAt - now) / length));
+}
+
 /** What one app's tile says right now. `entry` is { at, d } or undefined when nothing arrived yet. */
 function trioCard(app, entry, now) {
   const info = TRIO_INFO[app];
@@ -191,6 +211,8 @@ function trioCard(app, entry, now) {
     link: info.link,
     symbol: info.symbol,
     image: null,
+    foeImage: null,
+    battle: null,
     pill: "",
     sessions: [],
     headline: "Not linked yet",
@@ -214,6 +236,8 @@ function trioCard(app, entry, now) {
     card.timer = null;
     card.pill = "";
     card.sessions = [];
+    card.battle = null;
+    card.foeImage = null;
   }
   card.headline = String(card.headline).slice(0, 40);
   card.lines = card.lines.filter(Boolean).map((line) => String(line).slice(0, 60));
@@ -249,6 +273,7 @@ function trioNextRefresh(cards, now, rotating) {
   let next = now + (busy ? 2 : 5) * 60 * 1000;
   cards.forEach((card) => {
     if (card.timer && card.timer.at > now) next = Math.min(next, card.timer.at + 3000);
+    if (card.battle && card.battle.endsAt > now) next = Math.min(next, now + 2 * 60 * 1000);
   });
   if (rotating) next = Math.min(next, (Math.floor(now / TRIO_ROTATE_MS) + 1) * TRIO_ROTATE_MS + 1000);
   return Math.max(next, now + 60 * 1000);
@@ -570,7 +595,114 @@ function trioLiveUrl(code) {
   return /^jw-[0-9a-f]{32}$/.test(code) ? TRIO_LIVE + "#" + code : "";
 }
 
-function trioLockScreen(widget, card, family) {
+/** A lock-screen sprite, or nothing if the picture has not downloaded yet. */
+function trioLockSprite(stack, picture, side) {
+  if (!picture) return false;
+  const view = stack.addImage(picture);
+  view.imageSize = new Size(side, side);
+  return true;
+}
+
+/** Partner bottom-left, wild Pokémon top-right, like the app's battle screen, in one picture.
+ * The sprites are drawn a little larger than their slots, which trims their empty margins. */
+function trioBattleArt(partner, foe, width, height) {
+  if (!partner || !foe || typeof DrawContext === "undefined") return null;
+  try {
+    const art = new DrawContext();
+    art.size = new Size(width, height);
+    art.opaque = false;
+    art.respectScreenScale = true;
+    const slot = Math.min(width / 2, height);
+    const side = Math.round(slot * 1.35);
+    const inset = Math.round((side - slot) / 2);
+    art.drawImageInRect(partner, new Rect(-inset, height - slot - inset + 2, side, side));
+    art.drawImageInRect(foe, new Rect(width - slot - inset, -inset - 2, side, side));
+    return art.getImage();
+  } catch (error) {
+    return null;
+  }
+}
+
+/** The battle picture, or the two sprites side by side if it cannot be drawn. */
+function trioBattlePicture(stack, images, width, height) {
+  const art = trioBattleArt(images.pocketdex, images["pocketdex:foe"], width, height);
+  if (art) {
+    const view = stack.addImage(art);
+    view.imageSize = new Size(width, height);
+    return;
+  }
+  trioLockSprite(stack, images.pocketdex, Math.round(height * 0.8));
+  trioLockSprite(stack, images["pocketdex:foe"], Math.round(height * 0.8));
+}
+
+/** The wild Pokémon's HP bar: shrinks as the focus battle runs down. */
+function trioHpBar(stack, share, width) {
+  const bar = stack.addStack();
+  bar.layoutHorizontally();
+  bar.size = new Size(width, 4);
+  bar.cornerRadius = 2;
+  bar.backgroundColor = new Color("#ffffff", 0.25);
+  const fill = Math.round(width * share);
+  if (fill > 0) {
+    const left = bar.addStack();
+    left.size = new Size(fill, 4);
+    left.cornerRadius = 2;
+    left.backgroundColor = Color.white();
+  }
+  bar.addSpacer();
+}
+
+/** PocketDex on the lock screen during a focus battle: partner vs the wild Pokémon, a live
+ * countdown that ticks every second, and the wild Pokémon's HP bar draining. */
+function trioLockBattle(widget, card, family, images, now) {
+  const battle = card.battle;
+  const share = trioFoeHp(battle, now);
+  if (family === "accessoryInline") {
+    const ends = new Date(battle.endsAt);
+    const clock = String(ends.getHours()).padStart(2, "0") + ":" + String(ends.getMinutes()).padStart(2, "0");
+    widget.addText((battle.partner ? battle.partner + " vs " : "vs ") + battle.foe + " · until " + clock);
+    return;
+  }
+  if (family === "accessoryCircular") {
+    const sprites = widget.addStack();
+    sprites.layoutHorizontally();
+    sprites.addSpacer();
+    trioBattlePicture(sprites, images, 52, 30);
+    sprites.addSpacer();
+    const clock = widget.addDate(new Date(battle.endsAt));
+    clock.applyTimerStyle();
+    clock.font = Font.boldMonospacedSystemFont(11);
+    clock.centerAlignText && clock.centerAlignText();
+    clock.lineLimit = 1;
+    clock.minimumScaleFactor = 0.6;
+    return;
+  }
+  const row = widget.addStack();
+  row.layoutHorizontally();
+  row.centerAlignContent();
+  trioBattlePicture(row, images, 72, 46);
+  row.addSpacer(6);
+  const words = row.addStack();
+  words.layoutVertically();
+  const title = words.addText("vs " + battle.foe);
+  title.font = Font.boldSystemFont(12);
+  title.lineLimit = 1;
+  title.minimumScaleFactor = 0.6;
+  const clock = words.addDate(new Date(battle.endsAt));
+  clock.applyTimerStyle();
+  clock.font = Font.boldMonospacedSystemFont(17);
+  clock.lineLimit = 1;
+  clock.minimumScaleFactor = 0.6;
+  words.addSpacer(2);
+  trioHpBar(words, share, 64);
+  row.addSpacer();
+}
+
+function trioLockScreen(widget, card, family, images, now) {
+  if (card.app === "pocketdex" && card.battle && card.battle.endsAt > now) {
+    trioLockBattle(widget, card, family, images || {}, now);
+    return;
+  }
   if (family === "accessoryInline") {
     const words = card.timer ? card.title + " · " + card.timer.label : card.title + " · " + card.headline;
     widget.addText(words);
@@ -608,7 +740,7 @@ function trioBuild(cards, family, param, images, note, liveUrl, focus) {
   if (String(family).indexOf("accessory") === 0) {
     const card = trioPick(cards, focus || param);
     widget.url = card.link;
-    trioLockScreen(widget, card, family);
+    trioLockScreen(widget, card, family, images, Date.now());
     return widget;
   }
   if (family === "small" || focus) {
@@ -656,18 +788,22 @@ function trioReadJson(files, path) {
 
 async function trioImages(cards, files, folder) {
   const images = {};
-  for (const card of cards) {
-    if (!card.image) continue;
-    const path = files.joinPath(folder, card.image.key + ".img");
+  const wanted = [];
+  cards.forEach((card) => {
+    if (card.image) wanted.push([card.app, card.image]);
+    if (card.foeImage) wanted.push([card.app + ":foe", card.foeImage]);
+  });
+  for (const [name, image] of wanted) {
+    const path = files.joinPath(folder, image.key + ".img");
     try {
       if (files.fileExists(path)) {
-        images[card.app] = files.readImage(path);
+        images[name] = files.readImage(path);
       } else {
-        const request = new Request(card.image.url);
+        const request = new Request(image.url);
         request.timeoutInterval = 8;
         const picture = await request.loadImage();
         files.writeImage(path, picture);
-        images[card.app] = picture;
+        images[name] = picture;
       }
     } catch (error) {
       /* the tile falls back to its symbol */
@@ -732,5 +868,5 @@ async function main(ctx) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { TRIO_VERSION, TRIO_APPS, TRIO_INFO, trioParseFeed, trioMerge, trioCard, trioPick, trioFocusApp, trioNextRefresh, trioLiveUrl, trioBuild, main };
+  module.exports = { TRIO_VERSION, TRIO_APPS, TRIO_INFO, trioParseFeed, trioMerge, trioCard, trioPick, trioFoeHp, trioFocusApp, trioNextRefresh, trioLiveUrl, trioBuild, main };
 }

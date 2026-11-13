@@ -130,6 +130,25 @@ function makeWorld(options) {
       }
     },
     LinearGradient: class LinearGradient {},
+    Rect: class Rect {
+      constructor(x, y, width, height) {
+        Object.assign(this, { x, y, width, height });
+      }
+    },
+    DrawContext: options.noDraw
+      ? undefined
+      : class DrawContext {
+          constructor() {
+            this.drawn = [];
+          }
+          drawImageInRect(picture, rect) {
+            assert.ok(picture && rect instanceof world.globals.Rect, "drawImageInRect needs an image and a Rect");
+            this.drawn.push(picture.picture);
+          }
+          getImage() {
+            return { composite: this.drawn.slice(), size: this.size };
+          }
+        },
     SFSymbol: { named: (name) => ({ applyFont() {}, image: { symbol: name } }) },
     config: { widgetFamily: options.family || "medium", runsInWidget: options.inApp ? false : true },
     WebView: options.webView
@@ -293,7 +312,7 @@ const fullFeed = [
 
   // 5. lock screen
   world = await runLoader({ feed: fullFeed, family: "accessoryRectangular", param: "pocketdex" });
-  assert.deepStrictEqual(texts(world.shown), ["PocketDex", "Pikachu Lv 12", "vs Eevee "]);
+  assert.deepStrictEqual(texts(world.shown), ["vs Eevee"], "a running battle takes over the PocketDex lock screen");
   world = await runLoader({ feed: fullFeed, family: "accessoryInline", param: "haru" });
   assert.deepStrictEqual(texts(world.shown), ["Haru · Clear 18°"]);
 
@@ -402,7 +421,8 @@ const fullFeed = [
   const titles = ["PocketDex", "Haru", "Cozy Island", "Cairn"].filter((title) => seen.includes(title));
   assert.strictEqual(titles.length, 1, "rotate shows exactly one app: " + JSON.stringify(titles));
   const nextTurn = (Math.floor(Date.now() / slot) + 1) * slot;
-  assert.ok(world.shown.refreshAfterDate.getTime() <= nextTurn + 1000, "rotate asks for a redraw by the next turn");
+  // iOS is never asked for a redraw sooner than a minute away, so a turn due within a minute waits that long.
+  assert.ok(world.shown.refreshAfterDate.getTime() <= Math.max(nextTurn + 1000, Date.now() + 61000), "rotate asks for a redraw by the next turn");
 
   // 18. each app in its own look: Cozy's island art (rainbow after rain), Cairn's session cards, offline-safe colours
   world = await runLoader({ feed: fullFeed, family: "medium", param: "cozy" });
@@ -430,7 +450,39 @@ const fullFeed = [
   assert.ok(seen.includes("PocketDex") && seen.includes("Not linked yet") && seen.includes("open PocketDex once to link it"), "empty pocketdex: " + JSON.stringify(seen));
   assert.strictEqual(world.shown.backgroundColor.hex, "#f6f2eb");
 
-  console.log("widget trio check: 18 scenarios passed");
+  // 19. PocketDex lock screen during a focus battle: partner vs the wild Pokémon, live countdown, draining HP bar
+  world = await runLoader({ feed: fullFeed, family: "accessoryRectangular", param: "pocketdex" });
+  const pictures = [];
+  walk(world.shown, (node) => node.kind === "image" && pictures.push(node.image));
+  const sprite25 = "https://juw12.github.io/pocketdex/sprites/25.png";
+  const sprite133 = "https://juw12.github.io/pocketdex/sprites/133.png";
+  assert.strictEqual(pictures.length, 1, "one battle picture");
+  assert.deepStrictEqual(pictures[0].composite, [sprite25, sprite133], "partner drawn first (bottom-left), the wild Pokémon second (top-right)");
+  const plain = await runLoader({ feed: fullFeed, family: "accessoryRectangular", param: "pocketdex", noDraw: true });
+  const loose = [];
+  walk(plain.shown, (node) => node.kind === "image" && loose.push(node.image.picture));
+  assert.deepStrictEqual(loose, [sprite25, sprite133], "without drawing, the two sprites sit side by side");
+  assert.deepStrictEqual(dates(world.shown, "timer"), [battleEnds], "the countdown ticks live to the battle end");
+  const bars = [];
+  walk(world.shown, (node) => node.size && node.size.height === 4 && bars.push(node));
+  assert.strictEqual(bars[0].size.width, 64, "HP bar track");
+  const hpFill = bars[1].size.width;
+  assert.ok(hpFill >= 29 && hpFill <= 32, "12 of 25 minutes left is about half HP: " + hpFill);
+  assert.strictEqual(world.shown.url, "https://juw12.github.io/pocketdex/");
+  assert.ok(world.shown.refreshAfterDate.getTime() <= Date.now() + 2 * 60 * 1000 + 1000, "redraws every couple of minutes so the HP bar keeps draining");
+  const trioModule = require(path.join(WIDGET_DIR, "trio.js"));
+  assert.strictEqual(trioModule.trioFoeHp({ startAt: 0, endsAt: 100 }, 25), 0.75);
+  assert.strictEqual(trioModule.trioFoeHp({ startAt: 0, endsAt: 100 }, 200), 0, "HP never goes below empty");
+  world = await runLoader({ feed: fullFeed, family: "accessoryInline", param: "pocketdex" });
+  assert.ok(/^Pikachu vs Eevee · until \d\d:\d\d$/.test(texts(world.shown)[0]), "inline: " + texts(world.shown)[0]);
+  world = await runLoader({ feed: fullFeed, family: "accessoryCircular", param: "pocketdex" });
+  assert.deepStrictEqual(dates(world.shown, "timer"), [battleEnds], "circular shows the live countdown");
+  // no battle: the usual PocketDex lock screen
+  const calm = feedLine("pocketdex", now, Object.assign({}, pocketdex, { focus: null }));
+  world = await runLoader({ feed: calm, family: "accessoryRectangular", param: "pocketdex" });
+  assert.deepStrictEqual(texts(world.shown), ["PocketDex", "Pikachu Lv 12", "Dex 37/1025"]);
+
+  console.log("widget trio check: 19 scenarios passed");
 })().catch((error) => {
   console.error(error);
   process.exit(1);
