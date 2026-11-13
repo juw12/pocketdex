@@ -349,7 +349,36 @@ const fullFeed = [
   world = await runLoader({ feed: fullFeed, family: "medium", inApp: true, webView: false });
   assert.ok(world.presented, "without a web view the widget preview still shows");
 
-  console.log("widget trio check: 14 scenarios passed");
+  // 15. medium with an app name: that one app fills the whole widget (for a swipeable Smart Stack)
+  world = await runLoader({ feed: fullFeed, family: "medium", param: "Haru" });
+  seen = texts(world.shown);
+  assert.ok(seen.includes("HARU") && seen.includes("Clear 18°") && seen.includes("2 moments today"), "medium haru: " + JSON.stringify(seen));
+  ["POCKETDEX", "COZY ISLAND", "CAIRN"].forEach((other) => assert.ok(!seen.includes(other), "medium haru must not show " + other));
+  assert.strictEqual(world.shown.url, "https://juw12.github.io/projects/haru/app/", "tapping a one-app widget opens that app");
+  assert.strictEqual(seen.filter((item) => item === "●").length, 4, "one dot per app shows where this widget sits");
+  assert.ok(links(world.shown).includes(LIVE) && seen.includes("LIVE ›"), "the footer still opens the live view");
+
+  // 16. large with an app name, and its countdown still runs
+  world = await runLoader({ feed: fullFeed, family: "large", param: "pocketdex" });
+  seen = texts(world.shown);
+  assert.ok(seen.includes("POCKETDEX") && seen.includes("Pikachu Lv 12") && !seen.includes("HARU"), "large pocketdex: " + JSON.stringify(seen));
+  assert.deepStrictEqual(dates(world.shown, "timer"), [battleEnds], "large pocketdex counts down to the battle end");
+
+  // 17. "rotate": one widget takes turns, one app per 5-minute slot, and asks iOS to redraw at the next turn
+  const trio = require(path.join(WIDGET_DIR, "trio.js"));
+  const slot = 5 * 60 * 1000;
+  assert.deepStrictEqual([0, 1, 2, 3, 4].map((index) => trio.trioFocusApp("rotate", index * slot + 10)), ["pocketdex", "haru", "cozy", "cairn", "pocketdex"]);
+  assert.strictEqual(trio.trioFocusApp("cozy-island", 0), "cozy");
+  assert.strictEqual(trio.trioFocusApp("", 0), "", "empty parameter keeps the all-apps view");
+  assert.strictEqual(trio.trioFocusApp("nonsense", 0), "", "an unknown word keeps the all-apps view");
+  world = await runLoader({ feed: fullFeed, family: "medium", param: "rotate" });
+  seen = texts(world.shown);
+  const titles = ["POCKETDEX", "HARU", "COZY ISLAND", "CAIRN"].filter((title) => seen.includes(title));
+  assert.strictEqual(titles.length, 1, "rotate shows exactly one app: " + JSON.stringify(titles));
+  const nextTurn = (Math.floor(Date.now() / slot) + 1) * slot;
+  assert.ok(world.shown.refreshAfterDate.getTime() <= nextTurn + 1000, "rotate asks for a redraw by the next turn");
+
+  console.log("widget trio check: 17 scenarios passed");
 })().catch((error) => {
   console.error(error);
   process.exit(1);

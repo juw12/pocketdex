@@ -4,11 +4,14 @@
  * downloads this file and calls main({ code, param }), so fixes arrive without pasting again.
  * The top half is plain JavaScript and is also used by the setup page preview.
  */
-const TRIO_VERSION = "1.1.0";
+const TRIO_VERSION = "1.2.0";
 const TRIO_RELAY = "https://ntfy.sh";
 const TRIO_SETUP = "juw12.github.io/widget";
 const TRIO_LIVE = "https://juw12.github.io/pocketdex/widget/live.html";
 const TRIO_APPS = ["pocketdex", "haru", "cozy", "cairn"];
+/** Parameter words that make one widget take turns showing each app, one per time slot. */
+const TRIO_ROTATE_WORDS = ["rotate", "auto", "cycle", "switch"];
+const TRIO_ROTATE_MS = 5 * 60 * 1000;
 const TRIO_INFO = {
   pocketdex: { title: "PocketDex", accent: "#ffcb05", link: "https://juw12.github.io/pocketdex/", symbol: "sparkles" },
   haru: { title: "Haru", accent: "#ff9db0", link: "https://juw12.github.io/projects/haru/app/", symbol: "sun.max.fill" },
@@ -209,14 +212,27 @@ function trioPick(cards, param) {
   return cards.slice().sort((a, b) => b.updatedAt - a.updatedAt)[0];
 }
 
+/** Which single app a medium or large widget shows, or "" for the all-apps view.
+ * An app name (or alias) pins that app; "rotate" takes turns, one app per 5-minute slot. */
+function trioFocusApp(param, now) {
+  const word = String(param || "").trim().toLowerCase();
+  if (!word || word === "all") return "";
+  if (TRIO_ROTATE_WORDS.indexOf(word) >= 0) {
+    return TRIO_APPS[Math.floor(now / TRIO_ROTATE_MS) % TRIO_APPS.length];
+  }
+  const wanted = TRIO_ALIASES[word] || word;
+  return TRIO_APPS.indexOf(wanted) >= 0 ? wanted : "";
+}
+
 /** When iOS should run the script again: just after the next timer ends, every 2 minutes while
  * something changed in the last 15 minutes, else every 5 minutes. iOS treats this as a wish. */
-function trioNextRefresh(cards, now) {
+function trioNextRefresh(cards, now, rotating) {
   const busy = cards.some((card) => card.updatedAt && now - card.updatedAt < 15 * 60 * 1000);
   let next = now + (busy ? 2 : 5) * 60 * 1000;
   cards.forEach((card) => {
     if (card.timer && card.timer.at > now) next = Math.min(next, card.timer.at + 3000);
   });
+  if (rotating) next = Math.min(next, (Math.floor(now / TRIO_ROTATE_MS) + 1) * TRIO_ROTATE_MS + 1000);
   return Math.max(next, now + 60 * 1000);
 }
 
@@ -353,6 +369,45 @@ function trioFooter(widget, cards, note, liveUrl) {
   if (liveUrl) trioLabel(row, "LIVE ›", 8, new Color("#7cf29c"), true);
 }
 
+/** Four small dots, the shown app's dot lit, so a stack or a rotating widget shows where it is. */
+function trioDots(parent, cards, shown) {
+  const dots = parent.addStack();
+  dots.layoutHorizontally();
+  dots.centerAlignContent();
+  cards.forEach((card, index) => {
+    if (index) dots.addSpacer(3);
+    const lit = card.app === shown.app;
+    trioLabel(dots, "●", 7, lit ? new Color(card.accent) : new Color("#ffffff", 0.25), false);
+  });
+}
+
+/** One app filling a medium or large widget: big picture, big headline, every line it has. */
+function trioFocus(widget, card, cards, images, large) {
+  widget.url = card.link;
+  const head = widget.addStack();
+  head.layoutHorizontally();
+  head.centerAlignContent();
+  trioLabel(head, card.title.toUpperCase(), large ? 13 : 11, new Color(card.accent), true);
+  head.addSpacer();
+  trioDots(head, cards, card);
+  widget.addSpacer(large ? 12 : 6);
+  const body = widget.addStack();
+  if (large) body.layoutVertically();
+  else body.layoutHorizontally();
+  body.centerAlignContent();
+  trioPicture(body, card, images, large ? 120 : 70);
+  body.addSpacer(large ? 12 : 12);
+  const words = body.addStack();
+  words.layoutVertically();
+  trioLabel(words, card.headline, large ? 24 : 18, Color.white(), true);
+  words.addSpacer(large ? 6 : 3);
+  const room = (large ? 4 : 3) - (card.timer ? 1 : 0);
+  card.lines.slice(0, room).forEach((line) => trioLabel(words, line, large ? 15 : 12, new Color("#ffffff", 0.75), false));
+  if (card.timer) trioTimerRow(words, card, large ? 16 : 13);
+  body.addSpacer();
+  widget.addSpacer();
+}
+
 /** The live view: the same tiles in a page that updates the moment an app sends. */
 function trioLiveUrl(code) {
   return /^jw-[0-9a-f]{32}$/.test(code) ? TRIO_LIVE + "#" + code : "";
@@ -391,10 +446,10 @@ function trioLockScreen(widget, card, family) {
   }
 }
 
-function trioBuild(cards, family, param, images, note, liveUrl) {
+function trioBuild(cards, family, param, images, note, liveUrl, focus) {
   const widget = new ListWidget();
   if (String(family).indexOf("accessory") === 0) {
-    const card = trioPick(cards, param);
+    const card = trioPick(cards, focus || param);
     widget.url = card.link;
     trioLockScreen(widget, card, family);
     return widget;
@@ -405,11 +460,17 @@ function trioBuild(cards, family, param, images, note, liveUrl) {
   widget.backgroundGradient = backdrop;
   widget.setPadding(10, 10, 8, 10);
   if (family === "small") {
-    const card = trioPick(cards, param);
+    const card = trioPick(cards, focus || param);
     widget.url = card.link;
     const tile = trioTile(widget, card, images, 1.15);
     tile.backgroundColor = new Color("#ffffff", 0);
     tile.setPadding(0, 2, 0, 2);
+  } else if (focus) {
+    const card = cards.find((item) => item.app === focus);
+    trioFocus(widget, card, cards, images, family === "large" || family === "extraLarge");
+    widget.addSpacer(4);
+    trioFooter(widget, [card], note, liveUrl);
+    return widget;
   } else if (family === "large" || family === "extraLarge") {
     cards.forEach((card, index) => {
       if (index) widget.addSpacer(6);
@@ -500,8 +561,10 @@ async function main(ctx) {
   const cards = TRIO_APPS.map((app) => trioCard(app, state[app], now));
   const images = await trioImages(cards, files, folder);
   const liveUrl = trioLiveUrl(code);
-  const widget = trioBuild(cards, family, param, images, note, liveUrl);
-  widget.refreshAfterDate = new Date(trioNextRefresh(cards, now));
+  const focus = trioFocusApp(param, now);
+  const rotating = TRIO_ROTATE_WORDS.indexOf(param) >= 0;
+  const widget = trioBuild(cards, family, param, images, note, liveUrl, focus);
+  widget.refreshAfterDate = new Date(trioNextRefresh(cards, now, rotating));
 
   if (config.runsInWidget || config.runsInAccessoryWidget) {
     Script.setWidget(widget);
@@ -518,5 +581,5 @@ async function main(ctx) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { TRIO_VERSION, TRIO_APPS, TRIO_INFO, trioParseFeed, trioMerge, trioCard, trioPick, trioNextRefresh, trioLiveUrl, trioBuild, main };
+  module.exports = { TRIO_VERSION, TRIO_APPS, TRIO_INFO, trioParseFeed, trioMerge, trioCard, trioPick, trioFocusApp, trioNextRefresh, trioLiveUrl, trioBuild, main };
 }

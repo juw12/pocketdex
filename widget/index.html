@@ -125,7 +125,15 @@
     </div>
     <p class="status" id="script-status" role="status"></p>
     <textarea id="script-text" readonly hidden aria-label="Widget script"></textarea>
-    <p class="muted small">Sizes: medium shows all four as a 2 by 2 grid, large shows four rows with more detail. Small shows one app: type <code>pocketdex</code>, <code>haru</code>, <code>cozy</code> or <code>cairn</code> in the widget's Parameter field, or leave it empty to show whichever has a timer running. Lock-screen sizes work too.</p>
+    <p class="muted small">Sizes: medium shows all four as a 2 by 2 grid, large shows four rows with more detail, small shows one app. Lock-screen sizes work too.</p>
+    <h3>One app at a time, swipe to switch</h3>
+    <ol>
+      <li>Add a Scriptable widget (medium or large), <b>Edit Widget</b>, Script <code>Trio</code>, and type <code>pocketdex</code> in <b>Parameter</b>. That widget now shows only PocketDex, full size.</li>
+      <li>Add three more the same way with <code>haru</code>, <code>cozy</code> and <code>cairn</code>.</li>
+      <li>Drag each widget onto the first one. iOS turns them into one <b>Smart Stack</b>: swipe up or down on it to switch apps. The dots show which one you are on.</li>
+      <li>Or use one widget with Parameter <code>rotate</code>: it takes turns by itself, a different app about every 5 minutes.</li>
+    </ol>
+    <p class="muted small">Leave Parameter empty for the all-apps view.</p>
   </section>
 
   <section aria-labelledby="h-preview">
