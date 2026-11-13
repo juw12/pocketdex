@@ -482,7 +482,19 @@ const fullFeed = [
   world = await runLoader({ feed: calm, family: "accessoryRectangular", param: "pocketdex" });
   assert.deepStrictEqual(texts(world.shown), ["PocketDex", "Pikachu Lv 12", "Dex 37/1025"]);
 
-  console.log("widget trio check: 19 scenarios passed");
+  // 20. the widget shows when it last ran, and a drawing error shows a message instead of freezing
+  world = await runLoader({ feed: fullFeed, family: "medium", param: "haru" });
+  const stamp = "✓ " + trioModule.trioRanAt(Date.now());
+  assert.ok(texts(world.shown).includes(stamp), "one-app widget shows when it last ran: " + JSON.stringify(texts(world.shown)));
+  world = await runLoader({ feed: fullFeed, family: "medium" });
+  assert.ok(texts(world.shown).some((item) => item.startsWith(stamp)), "dashboard shows when it last ran");
+  const broken = TRIO_SOURCE.replace("function trioBuild(cards, family", "function trioBuild(cards, family) { throw new Error('boom'); }\nfunction trioBuildUnused(cards, family");
+  world = await runLoader({ trioSource: broken, feed: fullFeed, family: "medium" });
+  seen = texts(world.shown);
+  assert.ok(seen.some((item) => /could not draw/.test(item)) && seen.includes("boom"), "error widget: " + JSON.stringify(seen));
+  assert.ok(world.completed, "the script still completes");
+
+  console.log("widget trio check: 20 scenarios passed");
 })().catch((error) => {
   console.error(error);
   process.exit(1);

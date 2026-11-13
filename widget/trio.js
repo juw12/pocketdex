@@ -4,7 +4,7 @@
  * downloads this file and calls main({ code, param }), so fixes arrive without pasting again.
  * The top half is plain JavaScript and is also used by the setup page preview.
  */
-const TRIO_VERSION = "1.4.0";
+const TRIO_VERSION = "1.4.1";
 const TRIO_RELAY = "https://ntfy.sh";
 const TRIO_SETUP = "juw12.github.io/widget";
 const TRIO_LIVE = "https://juw12.github.io/pocketdex/widget/live.html";
@@ -94,6 +94,12 @@ function trioCount(value) {
 function trioClock(ms) {
   const total = Math.max(0, Math.ceil(ms / 1000));
   return String(Math.floor(total / 60)).padStart(2, "0") + ":" + String(total % 60).padStart(2, "0");
+}
+
+/** The local time the widget last ran, so a stale widget is easy to spot. */
+function trioRanAt(now) {
+  const date = new Date(now);
+  return String(date.getHours()).padStart(2, "0") + ":" + String(date.getMinutes()).padStart(2, "0");
 }
 
 function trioPlural(count, one, many) {
@@ -389,6 +395,7 @@ function trioFooter(widget, cards, note, liveUrl) {
     trioLabel(row, "set up at " + TRIO_SETUP, 8, grey, false);
   }
   row.addSpacer();
+  trioLabel(row, "✓ " + trioRanAt(Date.now()) + (liveUrl ? "  " : ""), 8, grey, false);
   if (liveUrl) trioLabel(row, "LIVE ›", 8, new Color("#7cf29c"), true);
 }
 
@@ -454,6 +461,7 @@ function trioAppFooter(stack, card, note, look) {
     trioLabel(row, "open " + card.title + " once to link it", 9, look.muted, false);
   }
   row.addSpacer();
+  trioLabel(row, "✓ " + trioRanAt(Date.now()), 9, look.muted, false);
 }
 
 /** Title row: the app's name in its own colour and type, PocketDex's Dex count, and the dots. */
@@ -846,12 +854,25 @@ async function main(ctx) {
 
   const now = Date.now();
   const cards = TRIO_APPS.map((app) => trioCard(app, state[app], now));
-  const images = await trioImages(cards, files, folder);
   const liveUrl = trioLiveUrl(code);
-  const focus = trioFocusApp(param, now);
-  const rotating = TRIO_ROTATE_WORDS.indexOf(param) >= 0;
-  const widget = trioBuild(cards, family, param, images, note, liveUrl, focus);
-  widget.refreshAfterDate = new Date(trioNextRefresh(cards, now, rotating));
+  let widget;
+  try {
+    const images = await trioImages(cards, files, folder);
+    const focus = trioFocusApp(param, now);
+    const rotating = TRIO_ROTATE_WORDS.indexOf(param) >= 0;
+    widget = trioBuild(cards, family, param, images, note, liveUrl, focus);
+    widget.refreshAfterDate = new Date(trioNextRefresh(cards, now, rotating));
+  } catch (error) {
+    // A drawing problem must not freeze the widget on an old picture: say what broke and try again soon.
+    widget = new ListWidget();
+    const title = widget.addText("Trio " + TRIO_VERSION + " could not draw");
+    title.font = Font.boldSystemFont(12);
+    const detail = widget.addText(String((error && error.message) || error).slice(0, 120));
+    detail.font = Font.systemFont(10);
+    detail.lineLimit = 3;
+    widget.addText("✓ " + trioRanAt(now)).font = Font.systemFont(9);
+    widget.refreshAfterDate = new Date(now + 5 * 60 * 1000);
+  }
 
   if (config.runsInWidget || config.runsInAccessoryWidget) {
     Script.setWidget(widget);
@@ -868,5 +889,5 @@ async function main(ctx) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { TRIO_VERSION, TRIO_APPS, TRIO_INFO, trioParseFeed, trioMerge, trioCard, trioPick, trioFoeHp, trioFocusApp, trioNextRefresh, trioLiveUrl, trioBuild, main };
+  module.exports = { TRIO_VERSION, TRIO_APPS, TRIO_INFO, trioParseFeed, trioMerge, trioCard, trioPick, trioFoeHp, trioRanAt, trioFocusApp, trioNextRefresh, trioLiveUrl, trioBuild, main };
 }
