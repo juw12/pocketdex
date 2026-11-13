@@ -1,7 +1,7 @@
 /* juw12 widget sync
  *
  * Sends a small status snapshot (counts, names, timer end times) to a private relay topic, so the
- * iPhone home-screen widget can show PocketDex, Haru and Cozy Island together.
+ * iPhone home-screen widget and its live view can show PocketDex, Haru, Cozy Island and Cairn together.
  *
  * - Does nothing until a widget code is paired in this browser (see widget/index.html).
  * - Relay: ntfy.sh, which keeps messages for about 12 hours. Anyone who has the code can read them,
@@ -19,9 +19,13 @@
   const CODE_PATTERN = /^jw-[0-9a-f]{32}$/;
   const APP_PATTERN = /^[a-z]{2,12}$/;
 
-  const NORMAL_GAP_MS = 5 * 60 * 1000; // ordinary changes: at most one message per app in 5 minutes
-  const URGENT_GAP_MS = 15 * 1000; // timers starting or stopping: at most one in 15 seconds
-  const SETTLE_MS = 1500; // lets a burst of saves collapse into one message
+  const NORMAL_GAP_MS = 20 * 1000; // ordinary changes: at most one message per app in 20 seconds
+  const URGENT_GAP_MS = 3 * 1000; // timers starting or stopping: at most one in 3 seconds
+  const SLOW_GAP_MS = 5 * 60 * 1000; // once most of today's budget is used
+  const SETTLE_MS = 1200; // lets a burst of saves collapse into one message
+  const DAILY_BUDGET = 200; // ntfy.sh allows 250 messages a day per network address; keep room for retries
+  const SLOW_AFTER = 150; // past this many today (all apps in this browser), slow down to SLOW_GAP_MS
+  const COUNT_KEY = "juw12.widget.sent";
   const RESEND_AFTER_MS = 6 * 60 * 60 * 1000; // the relay forgets after ~12 h, so repeat an unchanged snapshot
   const BACKOFF_MS = 15 * 60 * 1000; // after the relay says "too many requests"
   const RETRY_MS = 60 * 1000; // after a network failure
@@ -102,6 +106,25 @@
     return Number(read(BACKOFF_KEY)) || 0;
   }
 
+  function dayKey(now) {
+    const date = new Date(now);
+    return date.getFullYear() + "-" + (date.getMonth() + 1) + "-" + date.getDate();
+  }
+
+  /** Messages sent today by every app in this browser (they share one relay allowance). */
+  function sentToday(now) {
+    try {
+      const value = JSON.parse(read(COUNT_KEY) || "null");
+      return value && value.day === dayKey(now) ? Number(value.n) || 0 : 0;
+    } catch (error) {
+      return 0;
+    }
+  }
+
+  function countSent(now) {
+    write(COUNT_KEY, JSON.stringify({ day: dayKey(now), n: sentToday(now) + 1 }));
+  }
+
   function clearTimer(app) {
     if (timers[app]) {
       window.clearTimeout(timers[app].id);
@@ -134,6 +157,9 @@
       if (!leaving) schedule(app, backoffUntil());
       return;
     }
+    if (sentToday(now) >= DAILY_BUDGET) {
+      return; // today's allowance is used: keep the newest snapshot waiting for the next publish()
+    }
     delete pending[app];
     const message = '{"v":1,"app":"' + app + '","at":' + now + ',"d":' + item.body + "}";
     if (byteLength(message) > MAX_BYTES) return;
@@ -147,6 +173,7 @@
         .then((response) => {
           if (response.ok) {
             write(LAST_PREFIX + app, JSON.stringify({ code: topic, at: now, body: item.body }));
+            countSent(now);
             return;
           }
           if (response.status === 429) write(BACKOFF_KEY, String(Date.now() + BACKOFF_MS));
@@ -160,8 +187,8 @@
 
   /**
    * Queue a snapshot for one app ("pocketdex", "haru" or "cozy"). Cheap to call on every save:
-   * an unchanged snapshot is dropped, and changes are rate limited. Use { urgent: true } when a
-   * timer starts, pauses or ends so the widget countdown follows within seconds.
+   * an unchanged snapshot is dropped, and changes go out about a second after they happen (then at
+   * most every 20 s per app). Use { urgent: true } when a timer starts, pauses or ends.
    */
   function publish(app, snapshot, options) {
     try {
@@ -176,7 +203,7 @@
       }
       const urgent = Boolean(options && options.urgent) || Boolean(pending[app] && pending[app].urgent);
       pending[app] = { body, urgent };
-      const gap = urgent ? URGENT_GAP_MS : NORMAL_GAP_MS;
+      const gap = sentToday(now) >= SLOW_AFTER ? SLOW_GAP_MS : urgent ? URGENT_GAP_MS : NORMAL_GAP_MS;
       schedule(app, Math.max(now + SETTLE_MS, (last ? last.at : 0) + gap, backoffUntil()));
       return true;
     } catch (error) {
@@ -215,6 +242,7 @@
   window.Juw12Widget = {
     RELAY,
     SETUP_URL: "https://juw12.github.io/pocketdex/widget/",
+    LIVE_URL: "https://juw12.github.io/pocketdex/widget/live.html",
     code,
     setCode,
     newCode,

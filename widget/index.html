@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>iPhone widget for PocketDex, Haru and Cozy Island</title>
-  <meta name="description" content="One iPhone home-screen widget that shows PocketDex, Haru and Cozy Island together and follows them as you use them.">
+  <title>iPhone widget for PocketDex, Haru, Cozy Island and Cairn</title>
+  <meta name="description" content="One iPhone home-screen widget, plus a live view, that shows PocketDex, Haru, Cozy Island and Cairn together and follows them as you use them.">
   <meta name="theme-color" content="#f6f2eb">
   <link rel="icon" href="../icons/icon-192.png">
   <style>
@@ -76,8 +76,8 @@
 <body>
 <main>
   <a class="back" href="../">&larr; PocketDex</a>
-  <h1>One iPhone widget for PocketDex, Haru and Cozy Island</h1>
-  <p class="lede">Your partner and habits, today's Haru scene and your island garden, side by side on the home screen. Focus timers count down live. Everything else follows a few minutes after you use an app.</p>
+  <h1>One iPhone widget for PocketDex, Haru, Cozy Island and Cairn</h1>
+  <p class="lede">Your partner and habits, today's Haru scene, your island garden and your live coding sessions, side by side on the home screen. Apps send a change about a second after it happens; the live view shows it at once, and the widget catches up when iOS next redraws it.</p>
 
   <section aria-labelledby="h-code">
     <p class="step">Step 1</p>
@@ -100,6 +100,7 @@
       <li><a data-app-link="https://juw12.github.io/pocketdex/" href="https://juw12.github.io/pocketdex/">Open PocketDex</a> <span class="muted small">(code field: More, Trainer, iPhone widget)</span></li>
       <li><a data-app-link="https://juw12.github.io/projects/haru/app/" href="https://juw12.github.io/projects/haru/app/">Open Haru</a> <span class="muted small">(code field: Settings, iPhone widget)</span></li>
       <li><a data-app-link="https://juw12.github.io/portfolio/cozy-island/" href="https://juw12.github.io/portfolio/cozy-island/">Open Cozy Island</a> <span class="muted small">(pairs through the link)</span></li>
+      <li>Cairn runs on your PC: in a terminal there, run <code id="cairn-command">cairn widget pair jw-…</code> <button type="button" id="copy-cairn" class="ghost" disabled>Copy</button> <span class="muted small">(the Cairn desktop app then sends your live sessions within seconds of a change)</span></li>
     </ul>
     <div class="row">
       <button type="button" id="copy-links" class="ghost" disabled>Copy the three links</button>
@@ -116,6 +117,7 @@
       <li>In Scriptable tap <b>+</b>, paste, and name the script <code>Trio</code>. Run it once to see a preview.</li>
       <li>Hold an empty spot on the home screen, tap <b>Edit</b> then <b>Add Widget</b>, choose Scriptable and a size.</li>
       <li>Hold the new widget, tap <b>Edit Widget</b> and set Script to <code>Trio</code>.</li>
+      <li>For the instant view: open the <a id="live-link" href="live.html">live view</a> on the iPhone, tap <b>Share</b>, then <b>Add to Home Screen</b>. Tapping the widget opens it too.</li>
     </ol>
     <div class="row">
       <button type="button" id="copy-script" disabled>Copy widget script</button>
@@ -123,7 +125,7 @@
     </div>
     <p class="status" id="script-status" role="status"></p>
     <textarea id="script-text" readonly hidden aria-label="Widget script"></textarea>
-    <p class="muted small">Sizes: medium shows all three as tiles, large shows three rows with more detail. Small shows one app: type <code>pocketdex</code>, <code>haru</code> or <code>cozy</code> in the widget's Parameter field, or leave it empty to show whichever has a timer running. Lock-screen sizes work too.</p>
+    <p class="muted small">Sizes: medium shows all four as a 2 by 2 grid, large shows four rows with more detail. Small shows one app: type <code>pocketdex</code>, <code>haru</code>, <code>cozy</code> or <code>cairn</code> in the widget's Parameter field, or leave it empty to show whichever has a timer running. Lock-screen sizes work too.</p>
   </section>
 
   <section aria-labelledby="h-preview">
@@ -135,8 +137,8 @@
   <section aria-labelledby="h-facts">
     <h2 id="h-facts">Good to know</h2>
     <ul class="plain">
-      <li><b>How live it is.</b> Countdown timers tick every second on the widget. Other changes reach the relay within seconds to five minutes, and iOS decides when a widget redraws, usually every 5 to 15 minutes.</li>
-      <li><b>What is sent.</b> Names, counts and timer end times only: partner and level, Pokédex and habit counts, the Haru weather scene and day counts, island season, garden bloom times and totals. No diary text, photos or place names.</li>
+      <li><b>How live it is.</b> Apps send a change about a second after it happens (then at most every 20 seconds per app; Cairn checks every 3 seconds). The live view shows it the moment it arrives. The home-screen widget can't be pushed: iOS decides when it redraws, usually every 5 to 15 minutes, though its countdown timers tick every second.</li>
+      <li><b>What is sent.</b> Names, counts and timer end times only: partner and level, Pokédex and habit counts, the Haru weather scene and day counts, island season, garden bloom times and totals. Cairn sends session titles, step kinds (passed, failed, committed) and counts, never log text or files. No diary text, photos or place names.</li>
       <li><b>Where it goes.</b> Through <a href="https://ntfy.sh" rel="noopener">ntfy.sh</a>, a free public relay that keeps a message for about 12 hours. The widget keeps the last update it saw, so it does not go blank after that.</li>
       <li><b>Turning it off.</b> Unpair here or clear the code in an app and nothing more is sent from that browser. Make a new code if the old one was shared by mistake.</li>
     </ul>
@@ -297,6 +299,9 @@
     document.getElementById("pair").disabled = !code || code === paired;
     unpairButton.hidden = !paired;
     appLinks(code);
+    document.getElementById("cairn-command").textContent = "cairn widget pair " + (code || "jw-…");
+    document.getElementById("copy-cairn").disabled = !code;
+    document.getElementById("live-link").href = code ? "live.html#" + code : "live.html";
     if (!scriptText.hidden) scriptText.value = code ? loaderScript(code) : "";
     if (paired && code === paired) setStatus(pairStatus, "This browser is paired. Open the apps and they will start sending updates.", true);
     else if (paired && code) setStatus(pairStatus, "This browser is paired with a different code. Pair to switch to this one.");
@@ -333,6 +338,9 @@
   });
   document.getElementById("copy-links").addEventListener("click", () => {
     copyText(appLinks(currentCode()).join("\n"), linksStatus, "Links copied. Send them to the other device and open each one once.");
+  });
+  document.getElementById("copy-cairn").addEventListener("click", () => {
+    copyText("cairn widget pair " + currentCode(), linksStatus, "Command copied. Run it in a terminal on the PC where Cairn runs.");
   });
   document.getElementById("copy-script").addEventListener("click", () => {
     copyText(loaderScript(currentCode()), scriptStatus, "Script copied. Paste it into a new script in Scriptable.");

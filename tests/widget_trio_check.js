@@ -110,7 +110,17 @@ function makeWorld(options) {
     },
     LinearGradient: class LinearGradient {},
     SFSymbol: { named: (name) => ({ applyFont() {}, image: { symbol: name } }) },
-    config: { widgetFamily: options.family || "medium", runsInWidget: true },
+    config: { widgetFamily: options.family || "medium", runsInWidget: options.inApp ? false : true },
+    WebView: options.webView
+      ? class WebView {
+          async loadURL(url) {
+            world.webViewUrl = url;
+          }
+          async present(fullScreen) {
+            world.webViewPresented = fullScreen;
+          }
+        }
+      : undefined,
     args: { widgetParameter: options.param || null },
     Script: {
       setWidget: (widget) => (world.shown = widget),
@@ -174,7 +184,7 @@ function feedLine(app, at, d) {
 const now = Date.now();
 const today = dayKey(now);
 const battleEnds = now + 12 * 60 * 1000;
-const bloomAt = now + 3 * 60 * 1000;
+const bloomAt = now + 90 * 1000;
 const pocketdex = {
   day: today,
   trainer: "Juwen",
@@ -198,6 +208,18 @@ const cozy = {
   garden: [{ s: "tulip", b: bloomAt }, { s: "daisy", b: now - 60000 }, { s: "tomato", t: now - 1000 }],
   focus: null,
 };
+const cairn = {
+  day: today,
+  live: 2,
+  sessions: [
+    { t: "Add dark mode to the settings page", k: "pass", at: now - 60000, since: now - 3600000 },
+    { t: "Fix the GPX import", k: "note", at: now - 120000, since: now - 7200000 },
+  ],
+  shipped: 3,
+  ended: 4,
+  last: { t: "Widget for Cairn", r: "shipped", at: now - 600000 },
+};
+const LIVE = "https://juw12.github.io/pocketdex/widget/live.html#" + CODE;
 const fullFeed = [
   '{"id":"open","time":1,"event":"open","topic":"t"}',
   "not json at all",
@@ -205,20 +227,26 @@ const fullFeed = [
   feedLine("pocketdex", now - 60000, pocketdex),
   feedLine("haru", now - 120000, haru),
   feedLine("cozy", now - 30000, cozy),
+  feedLine("cairn", now - 45000, cairn),
   feedLine("someoneelse", now, { hello: 1 }),
 ].join("\n");
 
 (async () => {
-  // 1. medium: all three apps, live timers, tap targets, refresh time
+  // 1. medium: all four apps in a 2 x 2 grid, live timers, tap targets, refresh time
   let world = await runLoader({ feed: fullFeed, family: "medium" });
   let seen = texts(world.shown);
   assert.ok(world.completed && world.shown, "medium widget was not set");
-  ["POCKETDEX", "HARU", "COZY ISLAND", "Pikachu Lv 12", "Dex 37/1025", "Clear 18°", "Juwen's island", "vs Eevee ", "Tulip blooms "].forEach((needle) => {
+  ["POCKETDEX", "HARU", "COZY ISLAND", "CAIRN", "Pikachu Lv 12", "Clear 18°", "Juwen's island", "2 live sessions", "vs Eevee ", "Tulip blooms ", "LIVE ›"].forEach((needle) => {
     assert.ok(seen.includes(needle), "medium is missing: " + needle + " in " + JSON.stringify(seen));
   });
   assert.deepStrictEqual(dates(world.shown, "timer").sort(), [battleEnds, bloomAt].sort(), "timers should count down to the battle end and the bloom");
   assert.deepStrictEqual(dates(world.shown, "relative"), [now - 30000], "footer shows the newest update");
-  assert.strictEqual(links(world.shown).length, 3, "each tile opens its app");
+  const tapped = links(world.shown);
+  ["https://juw12.github.io/pocketdex/", "https://juw12.github.io/projects/haru/app/", "https://juw12.github.io/portfolio/cozy-island/", "https://juw12.github.io/cairn/"].forEach((url) => {
+    assert.ok(tapped.includes(url), "a tile should open " + url);
+  });
+  assert.strictEqual(world.shown.url, LIVE, "tapping the widget opens the live view");
+  assert.ok(tapped.filter((url) => url === LIVE).length === 2, "widget and footer open the live view");
   const refresh = world.shown.refreshAfterDate.getTime();
   assert.ok(refresh >= bloomAt && refresh <= bloomAt + 5000, "refresh should follow the next timer end");
   assert.ok(world.disk.get("/docs/juw12-trio-widget.js") === TRIO_SOURCE, "loader keeps an offline copy of the widget code");
@@ -235,10 +263,10 @@ const fullFeed = [
   world = await runLoader({ feed: fullFeed, family: "small" });
   assert.ok(texts(world.shown).includes("COZY ISLAND"), "small default should follow the soonest timer");
 
-  // 4. large: three rows with more detail
+  // 4. large: four rows with more detail
   world = await runLoader({ feed: fullFeed, family: "large" });
   seen = texts(world.shown);
-  ["Habits 2/3 · 5d streak", "Dusk · Autumn", "14 days kept · 6.3 km", "Autumn · rain", "1 ready to harvest"].forEach((needle) => {
+  ["Dex 37/1025", "Dusk · Autumn", "2 moments today", "Autumn · rain", "CAIRN", "Add dark mode to the settings page", "Last step: tests passed"].forEach((needle) => {
     assert.ok(seen.includes(needle), "large is missing: " + needle + " in " + JSON.stringify(seen));
   });
 
@@ -251,8 +279,8 @@ const fullFeed = [
   // 6. nothing published yet
   world = await runLoader({ feed: "", family: "medium" });
   seen = texts(world.shown);
-  assert.strictEqual(seen.filter((item) => item === "Not linked yet").length, 3, "empty feed: " + JSON.stringify(seen));
-  assert.ok(seen.some((item) => item.includes("juw12.github.io/pocketdex/widget")), "empty widget points at the setup page");
+  assert.strictEqual(seen.filter((item) => item === "Not linked yet").length, 4, "empty feed: " + JSON.stringify(seen));
+  assert.ok(seen.some((item) => item.includes("juw12.github.io/widget")), "empty widget points at the setup page");
 
   // 7. offline: the saved code and the saved snapshots are used
   const savedDisk = Object.fromEntries((await runLoader({ feed: fullFeed, family: "medium" })).disk);
@@ -272,7 +300,8 @@ const fullFeed = [
   // 10. no code pasted
   world = await runLoader({ code: "", feed: fullFeed, family: "medium" });
   seen = texts(world.shown);
-  assert.ok(seen.includes("add your code: juw12.github.io/pocketdex/widget"), "missing code: " + JSON.stringify(seen));
+  assert.ok(seen.includes("add your code: juw12.github.io/widget"), "missing code: " + JSON.stringify(seen));
+  assert.ok(!world.shown.url, "no live view without a code");
   assert.ok(!world.requests.some((url) => url.includes("ntfy.sh")), "must not poll without a code");
 
   // 11. yesterday's numbers do not pose as today's; ended and paused timers read correctly
@@ -284,9 +313,13 @@ const fullFeed = [
   ].join("\n");
   world = await runLoader({ feed: staleFeed, family: "large" });
   seen = texts(world.shown);
-  ["Habits 0/3 · 5d streak", "Battle over · open to finish", "No moments yet today", "Focus paused · 12:34"].forEach((needle) => {
+  ["Habits 0/3 · 5d streak", "No moments yet today", "Focus paused · 12:34"].forEach((needle) => {
     assert.ok(seen.includes(needle), "stale is missing: " + needle + " in " + JSON.stringify(seen));
   });
+  const staleSmall = await runLoader({ feed: staleFeed, family: "small", param: "pocketdex" });
+  assert.ok(texts(staleSmall.shown).includes("Habits 0/3 · 5d streak"), "small pocketdex keeps the habit line");
+  const staleCard = await runLoader({ feed: staleFeed, family: "accessoryRectangular", param: "pocketdex" });
+  assert.ok(texts(staleCard.shown).includes("Dex 37/1025"), "lock screen shows the first line");
   assert.deepStrictEqual(dates(world.shown, "timer"), [], "no countdown once every timer has ended or is paused");
 
   // 12. odd data from the relay cannot crash the widget
@@ -294,12 +327,29 @@ const fullFeed = [
     feedLine("pocketdex", now, { partner: { id: "25/../x", name: {}, level: "many" }, habits: "none", focus: { endsAt: "soon" } }),
     feedLine("haru", now, { scene: "../../secret", weather: 7, tempC: "hot" }),
     feedLine("cozy", now, { garden: "weeds", focus: 4 }),
+    feedLine("cairn", now, { live: "lots", sessions: [{ t: 5 }, null, "x"], last: { t: {} } }),
   ].join("\n");
   world = await runLoader({ feed: oddFeed, family: "medium" });
   assert.ok(world.shown && texts(world.shown).includes("HARU"), "odd data should still draw");
   assert.ok(!world.requests.some((url) => url.includes("..")), "never requests an image path taken from odd data");
 
-  console.log("widget trio check: 12 scenarios passed");
+  // 13. small Cairn tile, and yesterday's Cairn numbers do not pose as today's
+  world = await runLoader({ feed: fullFeed, family: "small", param: "cairn" });
+  seen = texts(world.shown);
+  assert.ok(seen.includes("CAIRN") && seen.includes("2 live sessions"), "small cairn: " + JSON.stringify(seen));
+  assert.strictEqual(world.shown.url, "https://juw12.github.io/cairn/");
+  world = await runLoader({ feed: feedLine("cairn", now - 26 * 3600000, Object.assign({}, cairn, { day: yesterday, live: 0 })), family: "large" });
+  seen = texts(world.shown);
+  assert.ok(seen.includes("No live sessions") && seen.includes("Nothing shipped yet today"), "stale cairn: " + JSON.stringify(seen));
+
+  // 14. run inside Scriptable (or tapped): the live view opens, full screen
+  world = await runLoader({ feed: fullFeed, family: "medium", inApp: true, webView: true });
+  assert.strictEqual(world.webViewUrl, LIVE, "in the app, the live view opens");
+  assert.strictEqual(world.webViewPresented, true);
+  world = await runLoader({ feed: fullFeed, family: "medium", inApp: true, webView: false });
+  assert.ok(world.presented, "without a web view the widget preview still shows");
+
+  console.log("widget trio check: 14 scenarios passed");
 })().catch((error) => {
   console.error(error);
   process.exit(1);

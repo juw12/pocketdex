@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#141a26">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Trio live">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Trio live: PocketDex, Haru, Cozy Island, Cairn</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #141a26;
+    --bg2: #232c3f;
+    --tile: rgba(255, 255, 255, 0.07);
+    --line: rgba(255, 255, 255, 0.12);
+    --text: #ffffff;
+    --soft: rgba(255, 255, 255, 0.74);
+    --faint: rgba(255, 255, 255, 0.55);
+    --ok: #7cf29c;
+    --warn: #ffd166;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  html,
+  body {
+    margin: 0;
+    min-height: 100%;
+    background: linear-gradient(160deg, var(--bg), var(--bg2)) fixed;
+    color: var(--text);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: calc(14px + env(safe-area-inset-top)) 14px calc(24px + env(safe-area-inset-bottom));
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  h1 {
+    font-size: 1.15rem;
+    margin: 0;
+    flex: 1;
+  }
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: var(--soft);
+  }
+  .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--warn);
+  }
+  .status[data-state="live"] .dot {
+    background: var(--ok);
+    box-shadow: 0 0 0 0 rgba(124, 242, 156, 0.6);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    70% {
+      box-shadow: 0 0 0 8px rgba(124, 242, 156, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(124, 242, 156, 0);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .status[data-state="live"] .dot {
+      animation: none;
+    }
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  @media (min-width: 560px) {
+    .grid {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+  .tile {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    gap: 12px;
+    align-items: start;
+    padding: 12px;
+    border-radius: 14px;
+    background: var(--tile);
+    border: 1px solid var(--line);
+    min-height: 96px;
+  }
+  .tile.flash {
+    animation: flash 1.2s ease-out;
+  }
+  @keyframes flash {
+    from {
+      background: rgba(124, 242, 156, 0.22);
+    }
+  }
+  .pic {
+    width: 56px;
+    height: 56px;
+    border-radius: 10px;
+    object-fit: cover;
+    image-rendering: pixelated;
+    background: rgba(255, 255, 255, 0.05);
+  }
+  .pic.icon {
+    display: grid;
+    place-items: center;
+    font-size: 1.6rem;
+  }
+  .app {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .headline {
+    font-weight: 700;
+    font-size: 1.05rem;
+    margin: 1px 0 2px;
+  }
+  .line {
+    color: var(--soft);
+    font-size: 0.9rem;
+  }
+  .timer {
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+  }
+  .meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 6px;
+    color: var(--faint);
+    font-size: 0.78rem;
+  }
+  .meta a {
+    color: var(--text);
+    text-decoration: none;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 10px;
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+  }
+  .empty,
+  .note {
+    color: var(--soft);
+    font-size: 0.9rem;
+  }
+  .note {
+    margin-top: 14px;
+  }
+  .note a {
+    color: var(--text);
+  }
+  form {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  input {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: rgba(0, 0, 0, 0.25);
+    color: var(--text);
+  }
+  button {
+    font: inherit;
+    font-weight: 600;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 0;
+    background: var(--ok);
+    color: #0d2016;
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Trio live</h1>
+    <span class="status" id="status" data-state="connecting" role="status" aria-live="polite"><span class="dot" aria-hidden="true"></span><span id="status-text">Connecting…</span></span>
+  </header>
+  <section id="ask" hidden>
+    <p class="empty">Paste your widget code (it starts with <b>jw-</b>) to see PocketDex, Haru, Cozy Island and Cairn here, live.</p>
+    <form id="ask-form">
+      <label class="sr" for="ask-code" hidden>Widget code</label>
+      <input id="ask-code" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="jw-…" aria-label="Widget code">
+      <button type="submit">Show</button>
+    </form>
+  </section>
+  <section class="grid" id="tiles" aria-label="Your apps"></section>
+  <p class="note">Updates appear here the moment an app sends one. Add this page to your Home Screen (Share, then Add to Home Screen) for a one-tap live view. Setup: <a href="https://juw12.github.io/widget/">juw12.github.io/widget</a></p>
+</main>
+<script src="trio.js"></script>
+<script>
+  (function () {
+    "use strict";
+    const CODE_RE = /^jw-[0-9a-f]{32}$/;
+    const ICONS = { pocketdex: "✨", haru: "☀️", cozy: "🌿", cairn: "⛰️" };
+    const tiles = document.getElementById("tiles");
+    const statusBox = document.getElementById("status");
+    const statusText = document.getElementById("status-text");
+    let code = "";
+    let state = {};
+    let source = null;
+    let lastMessageAt = 0;
+
+    function readCode() {
+      const fromHash = decodeURIComponent((location.hash || "").slice(1)).trim().toLowerCase();
+      if (CODE_RE.test(fromHash)) return fromHash;
+      try {
+        const saved = (localStorage.getItem("juw12.widget.code") || "").trim().toLowerCase();
+        if (CODE_RE.test(saved)) return saved;
+      } catch (error) {
+        /* private mode */
+      }
+      return "";
+    }
+
+    function cacheKey() {
+      return "juw12.trio.live." + code.slice(-8);
+    }
+
+    function setStatus(kind, words) {
+      statusBox.dataset.state = kind;
+      statusText.textContent = words;
+    }
+
+    function ago(ms) {
+      const seconds = Math.max(0, Math.round((Date.now() - ms) / 1000));
+      if (seconds < 5) return "just now";
+      if (seconds < 60) return seconds + " s ago";
+      if (seconds < 3600) return Math.round(seconds / 60) + " min ago";
+      if (seconds < 86400) return Math.round(seconds / 3600) + " h ago";
+      return Math.round(seconds / 86400) + " d ago";
+    }
+
+    function clock(ms) {
+      const total = Math.max(0, Math.ceil(ms / 1000));
+      const hours = Math.floor(total / 3600);
+      const rest = String(Math.floor((total % 3600) / 60)).padStart(2, "0") + ":" + String(total % 60).padStart(2, "0");
+      return hours ? hours + ":" + rest : rest;
+    }
+
+    function element(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
+
+    function tileFor(card) {
+      const tile = element("article", "tile");
+      tile.id = "tile-" + card.app;
+      let picture;
+      if (card.image && /^https:\/\/juw12\.github\.io\//.test(card.image.url)) {
+        picture = element("img", "pic");
+        picture.src = card.image.url;
+        picture.alt = "";
+        picture.loading = "lazy";
+      } else {
+        picture = element("div", "pic icon", ICONS[card.app] || "•");
+        picture.setAttribute("aria-hidden", "true");
+      }
+      tile.appendChild(picture);
+      const words = element("div");
+      const name = element("div", "app", card.title);
+      name.style.color = card.accent;
+      words.appendChild(name);
+      words.appendChild(element("div", "headline", card.headline));
+      card.lines.slice(0, 3).forEach((line) => words.appendChild(element("div", "line", line)));
+      if (card.timer) {
+        const row = element("div", "line");
+        row.appendChild(document.createTextNode(card.timer.label + " "));
+        const count = element("span", "timer", clock(card.timer.at - Date.now()));
+        count.dataset.at = String(card.timer.at);
+        count.style.color = card.accent;
+        row.appendChild(count);
+        words.appendChild(row);
+      }
+      const meta = element("div", "meta");
+      const when = element("span", "when", card.updatedAt ? "updated " + ago(card.updatedAt) : "nothing sent yet");
+      when.dataset.at = String(card.updatedAt || 0);
+      meta.appendChild(when);
+      const open = element("a", "", "Open ›");
+      open.href = card.link;
+      open.setAttribute("aria-label", "Open " + card.title);
+      meta.appendChild(open);
+      words.appendChild(meta);
+      tile.appendChild(words);
+      return tile;
+    }
+
+    function render(changedApps) {
+      const now = Date.now();
+      tiles.textContent = "";
+      TRIO_APPS.forEach((app) => {
+        const tile = tileFor(trioCard(app, state[app], now));
+        if (changedApps && changedApps.indexOf(app) >= 0) tile.classList.add("flash");
+        tiles.appendChild(tile);
+      });
+    }
+
+    function tick() {
+      const now = Date.now();
+      let ended = false;
+      tiles.querySelectorAll(".timer").forEach((node) => {
+        const left = Number(node.dataset.at) - now;
+        node.textContent = clock(left);
+        if (left <= 0) ended = true;
+      });
+      tiles.querySelectorAll(".when").forEach((node) => {
+        const at = Number(node.dataset.at);
+        if (at) node.textContent = "updated " + ago(at);
+      });
+      if (ended) render();
+      if (statusBox.dataset.state === "live" && lastMessageAt) setStatus("live", "Live · last update " + ago(lastMessageAt));
+    }
+
+    function absorb(text) {
+      const fresh = trioParseFeed(text);
+      const changed = Object.keys(fresh).filter((app) => !state[app] || fresh[app].at > state[app].at);
+      if (!changed.length) return;
+      state = trioMerge(state, fresh);
+      changed.forEach((app) => (lastMessageAt = Math.max(lastMessageAt, state[app].at)));
+      try {
+        localStorage.setItem(cacheKey(), JSON.stringify(state));
+      } catch (error) {
+        /* the page still works without a saved copy */
+      }
+      render(changed);
+    }
+
+    async function catchUp() {
+      try {
+        const response = await fetch(TRIO_RELAY + "/" + code + "/json?poll=1&since=12h", { cache: "no-store" });
+        if (response.ok) absorb(await response.text());
+      } catch (error) {
+        setStatus("offline", "Offline · showing the last update");
+      }
+    }
+
+    function listen() {
+      if (source) source.close();
+      if (typeof EventSource === "undefined") {
+        setStatus("offline", "This browser can't stay connected; pull to refresh");
+        return;
+      }
+      source = new EventSource(TRIO_RELAY + "/" + code + "/sse");
+      source.onopen = () => setStatus("live", lastMessageAt ? "Live · last update " + ago(lastMessageAt) : "Live · waiting for an update");
+      source.onmessage = (event) => absorb(event.data);
+      source.onerror = () => setStatus("connecting", "Reconnecting…");
+    }
+
+    function start(newCode) {
+      code = newCode;
+      document.getElementById("ask").hidden = true;
+      try {
+        state = JSON.parse(localStorage.getItem(cacheKey()) || "{}") || {};
+      } catch (error) {
+        state = {};
+      }
+      TRIO_APPS.forEach((app) => {
+        if (state[app]) lastMessageAt = Math.max(lastMessageAt, state[app].at);
+      });
+      render();
+      catchUp().then(listen);
+    }
+
+    document.getElementById("ask-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const value = document.getElementById("ask-code").value.trim().toLowerCase();
+      if (!CODE_RE.test(value)) {
+        document.getElementById("ask-code").setCustomValidity("That isn't a widget code (jw- and 32 letters or digits).");
+        document.getElementById("ask-code").reportValidity();
+        return;
+      }
+      history.replaceState(null, "", "#" + value);
+      start(value);
+    });
+    document.getElementById("ask-code").addEventListener("input", (event) => event.target.setCustomValidity(""));
+
+    document.addEventListener("visibilitychange", () => {
+      // iOS drops the connection while the page is hidden: catch up and reconnect when it comes back.
+      if (document.visibilityState === "visible" && code) catchUp().then(listen);
+    });
+    window.addEventListener("hashchange", () => {
+      const next = readCode();
+      if (next && next !== code) start(next);
+    });
+    setInterval(tick, 1000);
+
+    const initial = readCode();
+    if (initial) {
+      start(initial);
+    } else {
+      document.getElementById("ask").hidden = false;
+      setStatus("offline", "Not paired");
+    }
+  })();
+</script>
+</body>
+</html>

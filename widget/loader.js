@@ -2,7 +2,7 @@
 // These must be at the very top of the file. Do not edit.
 // icon-color: deep-green; icon-glyph: leaf;
 
-// juw12 trio widget: PocketDex, Haru and Cozy Island together.
+// juw12 trio widget: PocketDex, Haru, Cozy Island and Cairn together.
 // Setup page: https://juw12.github.io/pocketdex/widget/
 const CODE = "__CODE__";
 const SOURCE = "https://juw12.github.io/pocketdex/widget/trio.js";
