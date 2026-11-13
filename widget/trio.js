@@ -4,7 +4,7 @@
  * downloads this file and calls main({ code, param }), so fixes arrive without pasting again.
  * The top half is plain JavaScript and is also used by the setup page preview.
  */
-const TRIO_VERSION = "1.2.0";
+const TRIO_VERSION = "1.3.0";
 const TRIO_RELAY = "https://ntfy.sh";
 const TRIO_SETUP = "juw12.github.io/widget";
 const TRIO_LIVE = "https://juw12.github.io/pocketdex/widget/live.html";
@@ -18,6 +18,15 @@ const TRIO_INFO = {
   cozy: { title: "Cozy Island", accent: "#8fd694", link: "https://juw12.github.io/portfolio/cozy-island/", symbol: "leaf.fill" },
   cairn: { title: "Cairn", accent: "#9db4ff", link: "https://juw12.github.io/cairn/", symbol: "mountain.2.fill" },
 };
+/** How each app looks on its own (small widgets and one-app medium/large widgets), taken from the apps. */
+const TRIO_THEMES = {
+  pocketdex: { bg: "#f6f2eb", ink: "#26221d", muted: "#6b6157", accent: "#c0432f", soft: "#f7e6df", face: "rounded" },
+  haru: { bg: "#f6efe2", ink: "#3b3127", muted: "#7a6a58", accent: "#d9826b", soft: "#fffaf2", face: "plain", photo: true },
+  cozy: { bg: "#f0c3ae", ink: "#4a2e22", muted: "#7a5444", accent: "#c8643f", soft: "#fff4ea", face: "rounded", photo: true },
+  cairn: { bg: "#f4f1ea", ink: "#1b1a17", muted: "#6c665d", accent: "#d9481f", soft: "#fffdf8", face: "serif" },
+};
+/** Cozy Island screenshots cropped clear of the game menu, kept next to this widget. */
+const TRIO_COZY_ART = "https://juw12.github.io/pocketdex/widget/art/";
 const TRIO_ALIASES = {
   pokedex: "pocketdex",
   pocket: "pocketdex",
@@ -101,7 +110,8 @@ function trioPocketdex(card, d, now) {
   if (partner) {
     card.image = { url: "https://juw12.github.io/pocketdex/sprites/" + trioCount(partner.id) + ".png", key: "pd-" + trioCount(partner.id) };
   }
-  card.lines.push("Dex " + trioCount(d.caught) + "/" + trioCount(d.total));
+  card.pill = "Dex " + trioCount(d.caught) + "/" + trioCount(d.total);
+  card.lines.push(card.pill);
   if (total) card.lines.push("Habits " + done + "/" + total + (trioCount(d.streak) ? " · " + trioCount(d.streak) + "d streak" : ""));
   const focus = d.focus;
   if (focus && focus.paused) {
@@ -133,6 +143,8 @@ function trioHaru(card, d, now) {
 
 function trioCozy(card, d, now) {
   card.headline = d.name ? d.name + "'s island" : "Cozy Island";
+  const art = d.rain ? "cozy-rain" : "cozy-day";
+  card.image = { url: TRIO_COZY_ART + art + ".jpg", key: art, wide: true };
   card.lines.push(trioWords(d.season) + (d.rain ? " · rain" : ""));
   const beds = Array.isArray(d.garden) ? d.garden : [];
   const ready = beds.filter((bed) => Number.isFinite(bed.b) && bed.b <= now);
@@ -157,6 +169,8 @@ function trioCairn(card, d, now) {
   const sessions = Array.isArray(d.sessions) ? d.sessions.filter((item) => item && typeof item.t === "string") : [];
   const shipped = today ? trioCount(d.shipped) : 0;
   card.headline = live ? trioPlural(live, "live session", "live sessions") : "No live sessions";
+  card.sessions = live ? sessions.slice(0, 4).map((item) => ({ t: item.t.slice(0, 60), step: TRIO_STEPS[item.k] || "" })) : [];
+  card.pill = shipped ? shipped + " shipped" : "";
   if (live && sessions[0]) {
     card.lines.push(sessions[0].t);
     const step = TRIO_STEPS[sessions[0].k];
@@ -177,6 +191,8 @@ function trioCard(app, entry, now) {
     link: info.link,
     symbol: info.symbol,
     image: null,
+    pill: "",
+    sessions: [],
     headline: "Not linked yet",
     lines: [],
     timer: null,
@@ -196,6 +212,8 @@ function trioCard(app, entry, now) {
     card.headline = info.title;
     card.lines = ["Could not read the last update"];
     card.timer = null;
+    card.pill = "";
+    card.sessions = [];
   }
   card.headline = String(card.headline).slice(0, 40);
   card.lines = card.lines.filter(Boolean).map((line) => String(line).slice(0, 60));
@@ -247,15 +265,15 @@ function trioLabel(stack, value, size, color, bold) {
   return label;
 }
 
-function trioTimerRow(stack, card, size) {
+function trioTimerRow(stack, card, size, labelColor, clockColor, face) {
   const row = stack.addStack();
   row.layoutHorizontally();
   row.centerAlignContent();
-  trioLabel(row, card.timer.label + " ", size, new Color("#ffffff", 0.75), false);
+  trioLabel(row, card.timer.label + " ", size, labelColor || new Color("#ffffff", 0.75), false);
   const clock = row.addDate(new Date(card.timer.at));
   clock.applyTimerStyle();
-  clock.font = Font.boldMonospacedSystemFont(size);
-  clock.textColor = new Color(card.accent);
+  clock.font = face === "rounded" && typeof Font.boldRoundedSystemFont === "function" ? Font.boldRoundedSystemFont(size) : Font.boldMonospacedSystemFont(size);
+  clock.textColor = clockColor || new Color(card.accent);
   clock.lineLimit = 1;
   clock.minimumScaleFactor = 0.6;
 }
@@ -281,26 +299,6 @@ function trioStretch(stack) {
   const filler = stack.addStack();
   filler.layoutHorizontally();
   filler.addSpacer();
-}
-
-function trioTile(parent, card, images, scale) {
-  const tile = parent.addStack();
-  tile.layoutVertically();
-  tile.setPadding(8, 8, 8, 8);
-  tile.backgroundColor = new Color("#ffffff", 0.07);
-  tile.cornerRadius = 12;
-  tile.url = card.link;
-  trioStretch(tile);
-  trioLabel(tile, card.title.toUpperCase(), Math.round(9 * scale), new Color(card.accent), true);
-  tile.addSpacer(4);
-  trioPicture(tile, card, images, Math.round(36 * scale));
-  tile.addSpacer(4);
-  trioLabel(tile, card.headline, Math.round(12 * scale), Color.white(), true);
-  const room = card.timer ? 1 : 2;
-  card.lines.slice(0, room).forEach((line) => trioLabel(tile, line, Math.round(10 * scale), new Color("#ffffff", 0.75), false));
-  if (card.timer) trioTimerRow(tile, card, Math.round(10 * scale));
-  tile.addSpacer();
-  return tile;
 }
 
 /** A compact tile for the medium widget's 2 x 2 grid: picture on the left, words on the right. */
@@ -370,42 +368,201 @@ function trioFooter(widget, cards, note, liveUrl) {
 }
 
 /** Four small dots, the shown app's dot lit, so a stack or a rotating widget shows where it is. */
-function trioDots(parent, cards, shown) {
+function trioDots(parent, cards, shown, lit, unlit) {
   const dots = parent.addStack();
   dots.layoutHorizontally();
   dots.centerAlignContent();
   cards.forEach((card, index) => {
     if (index) dots.addSpacer(3);
-    const lit = card.app === shown.app;
-    trioLabel(dots, "●", 7, lit ? new Color(card.accent) : new Color("#ffffff", 0.25), false);
+    trioLabel(dots, "●", 7, card.app === shown.app ? lit : unlit, false);
   });
 }
 
-/** One app filling a medium or large widget: big picture, big headline, every line it has. */
-function trioFocus(widget, card, cards, images, large) {
-  widget.url = card.link;
+// ---------------------------------------------------------------- one app, drawn like the app itself
+
+/** The app's own type: rounded for PocketDex and Cozy Island, serif for Cairn, plain for Haru. */
+function trioFont(face, size, bold) {
+  try {
+    if (face === "rounded" && typeof Font.boldRoundedSystemFont === "function") {
+      return bold ? Font.boldRoundedSystemFont(size) : Font.mediumRoundedSystemFont(size);
+    }
+    if (face === "serif" && bold) return new Font("Georgia-Bold", size);
+  } catch (error) {
+    /* older Scriptable: plain system type below */
+  }
+  return bold ? Font.boldSystemFont(size) : Font.systemFont(size);
+}
+
+function trioWrite(stack, value, size, color, face, bold, lines) {
+  const label = stack.addText(String(value));
+  label.font = trioFont(face, size, bold);
+  label.textColor = color;
+  label.lineLimit = lines || 1;
+  label.minimumScaleFactor = 0.6;
+  return label;
+}
+
+/** Colours for this app: its own palette, or white words when its picture fills the widget. */
+function trioLook(theme, photo) {
+  if (photo) {
+    return { ink: Color.white(), muted: new Color("#ffffff", 0.88), accent: Color.white(), faint: new Color("#ffffff", 0.4), panel: new Color("#000000", 0.38) };
+  }
+  return { ink: new Color(theme.ink), muted: new Color(theme.muted), accent: new Color(theme.accent), faint: new Color(theme.ink, 0.18), panel: new Color(theme.soft, 0.85) };
+}
+
+/** "updated 2 min ago" (or the setup/offline note) in the app's quiet colour. */
+function trioAppFooter(stack, card, note, look) {
+  const row = stack.addStack();
+  row.layoutHorizontally();
+  row.centerAlignContent();
+  if (note) {
+    trioLabel(row, note, 9, look.muted, false);
+  } else if (card.updatedAt > 0) {
+    trioLabel(row, "updated ", 9, look.muted, false);
+    const age = row.addDate(new Date(card.updatedAt));
+    age.applyRelativeStyle();
+    age.font = Font.systemFont(9);
+    age.textColor = look.muted;
+    age.lineLimit = 1;
+    trioLabel(row, " ago", 9, look.muted, false);
+  } else {
+    trioLabel(row, "open " + card.title + " once to link it", 9, look.muted, false);
+  }
+  row.addSpacer();
+}
+
+/** Title row: the app's name in its own colour and type, PocketDex's Dex count, and the dots. */
+function trioAppHeader(widget, card, cards, theme, look, size) {
   const head = widget.addStack();
   head.layoutHorizontally();
   head.centerAlignContent();
-  trioLabel(head, card.title.toUpperCase(), large ? 13 : 11, new Color(card.accent), true);
+  trioWrite(head, card.title, size === "small" ? 13 : 15, look.accent, theme.face, true);
   head.addSpacer();
-  trioDots(head, cards, card);
-  widget.addSpacer(large ? 12 : 6);
-  const body = widget.addStack();
-  if (large) body.layoutVertically();
-  else body.layoutHorizontally();
-  body.centerAlignContent();
-  trioPicture(body, card, images, large ? 120 : 70);
-  body.addSpacer(large ? 12 : 12);
-  const words = body.addStack();
-  words.layoutVertically();
-  trioLabel(words, card.headline, large ? 24 : 18, Color.white(), true);
-  words.addSpacer(large ? 6 : 3);
-  const room = (large ? 4 : 3) - (card.timer ? 1 : 0);
-  card.lines.slice(0, room).forEach((line) => trioLabel(words, line, large ? 15 : 12, new Color("#ffffff", 0.75), false));
-  if (card.timer) trioTimerRow(words, card, large ? 16 : 13);
-  body.addSpacer();
+  const pillText = size === "small" && card.app === "pocketdex" ? "" : card.pill;
+  if (pillText) {
+    const pill = head.addStack();
+    pill.setPadding(2, 7, 2, 7);
+    pill.cornerRadius = 8;
+    pill.backgroundColor = new Color(theme.soft);
+    trioWrite(pill, pillText, size === "small" ? 9 : 10, new Color(theme.accent), theme.face, true);
+  }
+  if (size !== "small") {
+    if (pillText) head.addSpacer(8);
+    trioDots(head, cards, card, look.accent, look.faint);
+  }
+}
+
+/** PocketDex's partner sprite on a soft round badge, as in the app's partner card. */
+function trioSpriteBadge(parent, card, images, theme, side) {
+  const badge = parent.addStack();
+  badge.size = new Size(side, side);
+  badge.cornerRadius = Math.round(side / 2);
+  badge.backgroundColor = new Color(theme.soft);
+  badge.centerAlignContent();
+  const picture = images[card.app];
+  if (picture) {
+    const view = badge.addImage(picture);
+    view.imageSize = new Size(Math.round(side * 0.86), Math.round(side * 0.86));
+    return;
+  }
+  const symbol = SFSymbol.named(card.symbol);
+  symbol.applyFont(Font.systemFont(side));
+  const view = badge.addImage(symbol.image);
+  view.imageSize = new Size(Math.round(side * 0.5), Math.round(side * 0.5));
+  view.tintColor = new Color(theme.accent);
+}
+
+/** Headline, detail lines and the countdown, in the app's colours. */
+function trioAppWords(parent, card, theme, look, sizes, room, skip) {
+  trioWrite(parent, card.headline, sizes.headline, look.ink, theme.face, true);
+  parent.addSpacer(sizes.gap);
+  const lines = card.lines.filter((line) => line !== skip);
+  lines.slice(0, room - (card.timer ? 1 : 0)).forEach((line) => trioWrite(parent, line, sizes.line, look.muted, theme.face, false));
+  if (card.timer) trioTimerRow(parent, card, sizes.line + 1, look.muted, look.accent, theme.face);
+}
+
+function trioPocketdexView(widget, card, images, theme, look, size) {
+  const sizes = size === "large" ? { headline: 24, line: 15, gap: 6 } : size === "medium" ? { headline: 19, line: 13, gap: 3 } : { headline: 14, line: 11, gap: 1 };
+  if (size === "medium") {
+    const body = widget.addStack();
+    body.layoutHorizontally();
+    body.centerAlignContent();
+    trioSpriteBadge(body, card, images, theme, 84);
+    body.addSpacer(14);
+    const words = body.addStack();
+    words.layoutVertically();
+    trioAppWords(words, card, theme, look, sizes, 3, card.pill);
+    body.addSpacer();
+    return;
+  }
+  const center = widget.addStack();
+  center.layoutHorizontally();
+  center.addSpacer();
+  trioSpriteBadge(center, card, images, theme, size === "large" ? 150 : 54);
+  center.addSpacer();
+  widget.addSpacer(size === "large" ? 14 : 4);
+  trioAppWords(widget, card, theme, look, sizes, size === "large" ? 4 : 1, card.pill);
+}
+
+/** Haru and Cozy Island: the scene fills the widget like the app's own screen, words on a glass panel. */
+function trioPhotoView(widget, card, theme, look, size) {
+  const sizes = size === "large" ? { headline: 24, line: 14, gap: 4 } : size === "medium" ? { headline: 18, line: 12, gap: 2 } : { headline: 15, line: 11, gap: 1 };
   widget.addSpacer();
+  const panel = widget.addStack();
+  panel.layoutVertically();
+  panel.setPadding(size === "small" ? 6 : 8, 10, size === "small" ? 6 : 8, 10);
+  panel.cornerRadius = 14;
+  panel.backgroundColor = look.panel;
+  trioStretch(panel);
+  trioAppWords(panel, card, theme, look, sizes, size === "large" ? 4 : size === "medium" ? 2 : 1, "");
+}
+
+/** Cairn: the live count in the site's serif, then each live session as a card, like the Vibe page. */
+function trioCairnView(widget, card, theme, look, size) {
+  trioWrite(widget, card.headline, size === "small" ? 17 : size === "medium" ? 19 : 22, look.ink, theme.face, true);
+  widget.addSpacer(size === "large" ? 8 : 4);
+  const room = size === "large" ? 4 : size === "medium" ? 2 : 1;
+  const sessions = card.sessions.slice(0, room);
+  sessions.forEach((session, index) => {
+    if (index) widget.addSpacer(4);
+    const row = widget.addStack();
+    row.layoutHorizontally();
+    row.centerAlignContent();
+    row.setPadding(size === "large" ? 6 : 3, 8, size === "large" ? 6 : 3, 8);
+    row.cornerRadius = 8;
+    row.backgroundColor = new Color(theme.soft);
+    trioLabel(row, "●", 7, look.accent, false);
+    row.addSpacer(6);
+    trioWrite(row, session.t, size === "small" ? 10 : 12, look.ink, "plain", true, size === "small" ? 2 : 1);
+    row.addSpacer();
+    if (session.step && size !== "small") trioWrite(row, session.step, 10, look.muted, "plain", false);
+  });
+  if (!sessions.length) {
+    card.lines.slice(0, size === "small" ? 1 : 2).forEach((line) => trioWrite(widget, line, size === "small" ? 10 : 12, look.muted, "plain", false, 2));
+  }
+}
+
+/** One app on its own, looking like that app; tapping it opens the app. */
+function trioAppView(widget, card, cards, images, family, note) {
+  const theme = TRIO_THEMES[card.app];
+  const size = family === "small" ? "small" : family === "medium" ? "medium" : "large";
+  const picture = images[card.app];
+  const photo = Boolean(theme.photo && picture);
+  const look = trioLook(theme, photo);
+  widget.url = card.link;
+  widget.backgroundColor = new Color(theme.bg);
+  if (photo) widget.backgroundImage = picture;
+  widget.setPadding(size === "small" ? 12 : 14, 14, size === "small" ? 10 : 12, 14);
+  trioAppHeader(widget, card, cards, theme, look, size);
+  widget.addSpacer(size === "large" ? 14 : 6);
+  if (card.app === "pocketdex") trioPocketdexView(widget, card, images, theme, look, size);
+  else if (photo) trioPhotoView(widget, card, theme, look, size);
+  else if (card.app === "cairn") trioCairnView(widget, card, theme, look, size);
+  else trioAppWords(widget, card, theme, look, size === "large" ? { headline: 24, line: 14, gap: 4 } : { headline: 17, line: 12, gap: 2 }, size === "small" ? 2 : 3, "");
+  // The photo panel already sits at the bottom; everything else is pushed up by this spacer.
+  if (photo) widget.addSpacer(5);
+  else widget.addSpacer();
+  if (size !== "small" || !photo || note) trioAppFooter(widget, card, note, look);
 }
 
 /** The live view: the same tiles in a page that updates the moment an app sends. */
@@ -454,24 +611,18 @@ function trioBuild(cards, family, param, images, note, liveUrl, focus) {
     trioLockScreen(widget, card, family);
     return widget;
   }
+  if (family === "small" || focus) {
+    // One app on its own looks like that app and opens it.
+    const card = family === "small" ? trioPick(cards, focus || param) : cards.find((item) => item.app === focus);
+    trioAppView(widget, card, cards, images, family, note);
+    return widget;
+  }
   const backdrop = new LinearGradient();
   backdrop.colors = [new Color("#141a26"), new Color("#232c3f")];
   backdrop.locations = [0, 1];
   widget.backgroundGradient = backdrop;
   widget.setPadding(10, 10, 8, 10);
-  if (family === "small") {
-    const card = trioPick(cards, focus || param);
-    widget.url = card.link;
-    const tile = trioTile(widget, card, images, 1.15);
-    tile.backgroundColor = new Color("#ffffff", 0);
-    tile.setPadding(0, 2, 0, 2);
-  } else if (focus) {
-    const card = cards.find((item) => item.app === focus);
-    trioFocus(widget, card, cards, images, family === "large" || family === "extraLarge");
-    widget.addSpacer(4);
-    trioFooter(widget, [card], note, liveUrl);
-    return widget;
-  } else if (family === "large" || family === "extraLarge") {
+  if (family === "large" || family === "extraLarge") {
     cards.forEach((card, index) => {
       if (index) widget.addSpacer(6);
       trioRow(widget, card, images);
@@ -489,9 +640,9 @@ function trioBuild(cards, family, param, images, note, liveUrl, focus) {
     }
     widget.addSpacer();
   }
-  if (liveUrl && family !== "small") widget.url = liveUrl;
+  if (liveUrl) widget.url = liveUrl;
   widget.addSpacer(4);
-  trioFooter(widget, cards, note, family === "small" ? "" : liveUrl);
+  trioFooter(widget, cards, note, liveUrl);
   return widget;
 }
 

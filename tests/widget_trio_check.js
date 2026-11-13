@@ -91,7 +91,28 @@ function makeWorld(options) {
     ListWidget,
     Request,
     FileManager: { local: () => files },
-    Font: { systemFont: font("regular"), boldSystemFont: font("bold"), boldMonospacedSystemFont: font("mono") },
+    Font: class Font {
+      constructor(name, size) {
+        assert.ok(typeof name === "string" && size > 0, "named font needs a name and a size");
+        this.name = name;
+        this.size = size;
+      }
+      static systemFont(size) {
+        return font("regular")(size);
+      }
+      static boldSystemFont(size) {
+        return font("bold")(size);
+      }
+      static boldMonospacedSystemFont(size) {
+        return font("mono")(size);
+      }
+      static boldRoundedSystemFont(size) {
+        return font("bold-rounded")(size);
+      }
+      static mediumRoundedSystemFont(size) {
+        return font("medium-rounded")(size);
+      }
+    },
     Color: class Color {
       constructor(hex, alpha) {
         assert.ok(/^#[0-9a-f]{6}$/i.test(hex), "bad colour " + hex);
@@ -255,13 +276,13 @@ const fullFeed = [
   // 2. small: one named app only
   world = await runLoader({ feed: fullFeed, family: "small", param: "Haru" });
   seen = texts(world.shown);
-  assert.ok(seen.includes("HARU") && seen.includes("2 moments today"), "small haru: " + JSON.stringify(seen));
-  assert.ok(!seen.includes("POCKETDEX") && !seen.includes("COZY ISLAND"), "small shows one app");
+  assert.ok(seen.includes("Haru") && seen.includes("Clear 18°"), "small haru: " + JSON.stringify(seen));
+  assert.ok(!seen.includes("PocketDex") && !seen.includes("Cozy Island"), "small shows one app");
   assert.strictEqual(world.shown.url, "https://juw12.github.io/projects/haru/app/");
 
   // 3. small without a parameter follows the timer that ends first
   world = await runLoader({ feed: fullFeed, family: "small" });
-  assert.ok(texts(world.shown).includes("COZY ISLAND"), "small default should follow the soonest timer");
+  assert.ok(texts(world.shown).includes("Cozy Island"), "small default should follow the soonest timer");
 
   // 4. large: four rows with more detail
   world = await runLoader({ feed: fullFeed, family: "large" });
@@ -336,7 +357,7 @@ const fullFeed = [
   // 13. small Cairn tile, and yesterday's Cairn numbers do not pose as today's
   world = await runLoader({ feed: fullFeed, family: "small", param: "cairn" });
   seen = texts(world.shown);
-  assert.ok(seen.includes("CAIRN") && seen.includes("2 live sessions"), "small cairn: " + JSON.stringify(seen));
+  assert.ok(seen.includes("Cairn") && seen.includes("2 live sessions"), "small cairn: " + JSON.stringify(seen));
   assert.strictEqual(world.shown.url, "https://juw12.github.io/cairn/");
   world = await runLoader({ feed: feedLine("cairn", now - 26 * 3600000, Object.assign({}, cairn, { day: yesterday, live: 0 })), family: "large" });
   seen = texts(world.shown);
@@ -349,20 +370,25 @@ const fullFeed = [
   world = await runLoader({ feed: fullFeed, family: "medium", inApp: true, webView: false });
   assert.ok(world.presented, "without a web view the widget preview still shows");
 
-  // 15. medium with an app name: that one app fills the whole widget (for a swipeable Smart Stack)
+  // 15. medium with an app name: that one app fills the whole widget, drawn like the app (for a Smart Stack)
   world = await runLoader({ feed: fullFeed, family: "medium", param: "Haru" });
   seen = texts(world.shown);
-  assert.ok(seen.includes("HARU") && seen.includes("Clear 18°") && seen.includes("2 moments today"), "medium haru: " + JSON.stringify(seen));
-  ["POCKETDEX", "COZY ISLAND", "CAIRN"].forEach((other) => assert.ok(!seen.includes(other), "medium haru must not show " + other));
+  assert.ok(seen.includes("Haru") && seen.includes("Clear 18°") && seen.includes("2 moments today"), "medium haru: " + JSON.stringify(seen));
+  ["PocketDex", "Cozy Island", "Cairn", "LIVE ›"].forEach((other) => assert.ok(!seen.includes(other), "medium haru must not show " + other));
   assert.strictEqual(world.shown.url, "https://juw12.github.io/projects/haru/app/", "tapping a one-app widget opens that app");
+  assert.ok(!links(world.shown).includes(LIVE), "a one-app widget does not open the dashboard");
   assert.strictEqual(seen.filter((item) => item === "●").length, 4, "one dot per app shows where this widget sits");
-  assert.ok(links(world.shown).includes(LIVE) && seen.includes("LIVE ›"), "the footer still opens the live view");
+  assert.deepStrictEqual(world.shown.backgroundImage, { picture: "https://juw12.github.io/projects/haru/app/scenes/clear__dusk__autumn.jpg" }, "Haru's scene fills the widget");
+  assert.deepStrictEqual(dates(world.shown, "relative"), [now - 120000], "shows when Haru last updated");
 
   // 16. large with an app name, and its countdown still runs
   world = await runLoader({ feed: fullFeed, family: "large", param: "pocketdex" });
   seen = texts(world.shown);
-  assert.ok(seen.includes("POCKETDEX") && seen.includes("Pikachu Lv 12") && !seen.includes("HARU"), "large pocketdex: " + JSON.stringify(seen));
+  assert.ok(seen.includes("PocketDex") && seen.includes("Pikachu Lv 12") && !seen.includes("Haru"), "large pocketdex: " + JSON.stringify(seen));
   assert.deepStrictEqual(dates(world.shown, "timer"), [battleEnds], "large pocketdex counts down to the battle end");
+  assert.strictEqual(world.shown.backgroundColor.hex, "#f6f2eb", "PocketDex keeps its cream paper");
+  assert.strictEqual(seen.filter((item) => item === "Dex 37/1025").length, 1, "the Dex count shows once, as a pill");
+  assert.ok(!world.shown.backgroundImage, "PocketDex has no photo background");
 
   // 17. "rotate": one widget takes turns, one app per 5-minute slot, and asks iOS to redraw at the next turn
   const trio = require(path.join(WIDGET_DIR, "trio.js"));
@@ -373,12 +399,38 @@ const fullFeed = [
   assert.strictEqual(trio.trioFocusApp("nonsense", 0), "", "an unknown word keeps the all-apps view");
   world = await runLoader({ feed: fullFeed, family: "medium", param: "rotate" });
   seen = texts(world.shown);
-  const titles = ["POCKETDEX", "HARU", "COZY ISLAND", "CAIRN"].filter((title) => seen.includes(title));
+  const titles = ["PocketDex", "Haru", "Cozy Island", "Cairn"].filter((title) => seen.includes(title));
   assert.strictEqual(titles.length, 1, "rotate shows exactly one app: " + JSON.stringify(titles));
   const nextTurn = (Math.floor(Date.now() / slot) + 1) * slot;
   assert.ok(world.shown.refreshAfterDate.getTime() <= nextTurn + 1000, "rotate asks for a redraw by the next turn");
 
-  console.log("widget trio check: 17 scenarios passed");
+  // 18. each app in its own look: Cozy's island art (rainbow after rain), Cairn's session cards, offline-safe colours
+  world = await runLoader({ feed: fullFeed, family: "medium", param: "cozy" });
+  seen = texts(world.shown);
+  assert.ok(seen.includes("Juwen's island") && seen.includes("Cozy Island"), "medium cozy: " + JSON.stringify(seen));
+  assert.deepStrictEqual(world.shown.backgroundImage, { picture: "https://juw12.github.io/pocketdex/widget/art/cozy-rain.jpg" }, "rain shows the rainbow art");
+  assert.strictEqual(world.shown.url, "https://juw12.github.io/portfolio/cozy-island/");
+  const dryCozy = feedLine("cozy", now, Object.assign({}, cozy, { rain: false }));
+  world = await runLoader({ feed: dryCozy, family: "small", param: "cozy" });
+  assert.deepStrictEqual(world.shown.backgroundImage, { picture: "https://juw12.github.io/pocketdex/widget/art/cozy-day.jpg" }, "a dry island shows the island art");
+  world = await runLoader({ feed: fullFeed, family: "large", param: "cairn" });
+  seen = texts(world.shown);
+  ["Cairn", "2 live sessions", "Add dark mode to the settings page", "tests passed", "Fix the GPX import", "3 shipped"].forEach((needle) => {
+    assert.ok(seen.includes(needle), "large cairn is missing: " + needle + " in " + JSON.stringify(seen));
+  });
+  assert.strictEqual(world.shown.backgroundColor.hex, "#f4f1ea", "Cairn keeps its paper colour");
+  assert.strictEqual(world.shown.url, "https://juw12.github.io/cairn/");
+  // offline and no pictures yet: Haru falls back to its own warm colours and says it is offline
+  world = await runLoader({ offline: true, disk: savedDisk, family: "small", param: "haru" });
+  seen = texts(world.shown);
+  assert.ok(seen.includes("Clear 18°") && seen.includes("offline · showing the last update"), "offline haru: " + JSON.stringify(seen));
+  // an app that never sent anything still looks like itself and explains what to do
+  world = await runLoader({ feed: "", family: "medium", param: "pocketdex" });
+  seen = texts(world.shown);
+  assert.ok(seen.includes("PocketDex") && seen.includes("Not linked yet") && seen.includes("open PocketDex once to link it"), "empty pocketdex: " + JSON.stringify(seen));
+  assert.strictEqual(world.shown.backgroundColor.hex, "#f6f2eb");
+
+  console.log("widget trio check: 18 scenarios passed");
 })().catch((error) => {
   console.error(error);
   process.exit(1);
