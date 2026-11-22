@@ -160,7 +160,7 @@ jobs:
           | **Mac with Apple chip (M1 and newer)** | [PocketDex-macOS-AppleSilicon.dmg](https://github.com/juw12/pocketdex/releases/download/desktop/PocketDex-macOS-AppleSilicon.dmg) | Open it and drag PocketDex to Applications. The first time, macOS blocks it because it is not notarized: **System Settings → Privacy & Security → Open Anyway**. |
           | **Mac with Intel chip** | [PocketDex-macOS-Intel.dmg](https://github.com/juw12/pocketdex/releases/download/desktop/PocketDex-macOS-Intel.dmg) | Same as above. Not sure which Mac? Apple menu → About This Mac shows **Chip** (Apple) or **Processor** (Intel). |
           | **iPhone / iPad** | [Open in Safari](https://juw12.github.io/pocketdex/) | Share → **Add to Home Screen** (free, full screen, updates itself). |
-          | **Android** | [PocketDex-android.apk](https://github.com/juw12/pocketdex/releases/download/android/PocketDex-android.apk) | Open the file on the phone and allow your browser to install apps once. |
+          | **Android** | [Open in Chrome](https://juw12.github.io/pocketdex/) | Menu → **Add to Home screen** / **Install app**. There is no .apk. |
 
           The apps load PocketDex from the web, so new versions arrive the moment they are published, with no reinstall. Checksums for this build: `SHA256SUMS.txt`.
           EOF

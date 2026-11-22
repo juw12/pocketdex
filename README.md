@@ -7,10 +7,10 @@ are bundled. No account, no server; your progress is saved in the browser.
 
 - **Windows:** [`PocketDex-Windows-Setup.exe`](https://github.com/juw12/pocketdex/releases/download/desktop/PocketDex-Windows-Setup.exe) (no admin needed; if Windows says it protected your PC, choose *More info → Run anyway*), or without installing [`PocketDex-Windows-Portable.zip`](https://github.com/juw12/pocketdex/releases/download/desktop/PocketDex-Windows-Portable.zip).
 - **Mac:** [`PocketDex-macOS-AppleSilicon.dmg`](https://github.com/juw12/pocketdex/releases/download/desktop/PocketDex-macOS-AppleSilicon.dmg) (M1 and newer) or [`PocketDex-macOS-Intel.dmg`](https://github.com/juw12/pocketdex/releases/download/desktop/PocketDex-macOS-Intel.dmg). The first time, macOS blocks it because it is not notarized: **System Settings → Privacy & Security → Open Anyway**.
-- **Android:** [`PocketDex-android.apk`](https://github.com/juw12/pocketdex/releases/download/android/PocketDex-android.apk): open the file on the phone and allow your browser to install apps once.
+- **Android:** open https://juw12.github.io/pocketdex/ in Chrome, then menu → **Add to Home screen** / **Install app**. There is no .apk: the one that was built froze the Android emulator it was tried on twice, so it was not published.
 - **iPhone:** open https://juw12.github.io/pocketdex/ in Safari, tap Share, then **Add to Home Screen**.
 
-The Windows, Mac and Android apps are the web app in its own window ([`desktop/`](shell/desktop/README.md), [`android/`](shell/android/README.md)) and change with it. Each build is opened on GitHub's machines before it is published: on Windows and on a Mac the page loads, the app starts and can store data; on an Android emulator it installs, opens and stays up. They are not code-signed or notarised, and no real phone or PC has run them yet.
+The Windows and Mac apps are the web app in its own window ([`shell/desktop/`](shell/desktop/README.md)) and change with it. Each build is opened on GitHub's machines before it is published: the page loads, the app starts and can store data. They are not code-signed or notarised, and no real PC has run them yet.
 
 ## Open it
 - Double-click `index.html` (works straight from disk), or
