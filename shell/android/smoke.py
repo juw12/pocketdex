@@ -54,22 +54,9 @@ def main():
         if adb("shell", "ping", "-c", "1", "-W", "2", host, check=False).startswith("PING "):
             break
         time.sleep(3)
-    # This emulator has no graphics card. PocketDex's 3D meadow froze it twice (adb stopped answering), so for
-    # this check WebGL is switched off in the emulator's WebView and the page shows its own fallback. A real
-    # phone is not touched by this: the file is read only on a test image.
-    adb("shell", "echo 'webview --disable-3d-apis --disable-webgl --disable-webgl2' > /data/local/tmp/webview-command-line", check=False)
     adb("install", "-r", apk)
     adb("logcat", "-c", check=False)
     adb("shell", "am", "start", "-W", "-n", package + "/.MainActivity")
-    # What the emulator is busy with in the first seconds (read with a short limit: a frozen emulator must
-    # not hold the check up, and what it said before freezing is the only clue there is).
-    for moment in (3, 8, 15):
-        time.sleep(5 if moment > 3 else 3)
-        try:
-            look = subprocess.run(["adb", "shell", "top -b -n 1 -m 6 | tail -n 8; cat /proc/meminfo | head -n 3"], capture_output=True, text=True, timeout=20).stdout
-        except subprocess.TimeoutExpired:
-            look = "(no answer in 20 s)"
-        print("  at about %d s:\n%s" % (moment, "\n".join("    " + line for line in look.strip().splitlines())), flush=True)
 
     first = ""
     for _ in range(30):

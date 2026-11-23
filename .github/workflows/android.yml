@@ -89,12 +89,12 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_6
-          # PocketDex is heavier than the other pages: the default 2 GB froze the emulator
+          # PocketDex is heavier than the other pages
           ram-size: 4096M
           cores: 4
           disable-animations: true
-          # swiftshader_indirect: the emulator itself died about 5 s after PocketDex opened (three runs, also with
-          # 4 GB). swangle_indirect draws through another software path.
+          # With -gpu swiftshader_indirect the emulator itself died about 5 s after PocketDex opened (three runs,
+          # also with 4 GB). swangle_indirect draws through another software path, and the app stays up.
           emulator-options: -no-window -gpu swangle_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: python3 shell/android/smoke.py shell/android/dist/PocketDex-android.apk
       - uses: actions/upload-artifact@v4
