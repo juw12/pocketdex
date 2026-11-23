@@ -54,6 +54,10 @@ def main():
         if adb("shell", "ping", "-c", "1", "-W", "2", host, check=False).startswith("PING "):
             break
         time.sleep(3)
+    # This emulator has no graphics card. PocketDex's 3D meadow froze it twice (adb stopped answering), so for
+    # this check WebGL is switched off in the emulator's WebView and the page shows its own fallback. A real
+    # phone is not touched by this: the file is read only on a test image.
+    adb("shell", "echo 'webview --disable-3d-apis --disable-webgl --disable-webgl2' > /data/local/tmp/webview-command-line", check=False)
     adb("install", "-r", apk)
     adb("logcat", "-c", check=False)
     adb("shell", "am", "start", "-W", "-n", package + "/.MainActivity")
